@@ -37,6 +37,11 @@ jobs:
             target
           key: cargo-${{ runner.os }}-ci-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: cargo-${{ runner.os }}-ci-
+      - name: Cache model fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/fixtures/downloaded
+          key: fixtures-${{ hashFiles('crates/cantor-fixtures/src/lib.rs') }}
       - name: No placeholder toolchain hash
         # Matches the assignment only; the comment explaining the bump
         # procedure mentions lib.fakeSha256 on purpose.

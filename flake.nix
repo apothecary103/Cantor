@@ -90,6 +90,9 @@
               maturin
               wasm-tools
               nixfmt
+              # Test fixtures are downloaded by checksum and unzipped.
+              curl
+              unzip
             ];
 
             buildInputs =

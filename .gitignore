@@ -47,7 +47,7 @@ venv/
 *.ckpt
 *.safetensors
 *.metallib
-/tests/fixtures/downloaded/
+/tests/fixtures/downloaded
 /voicebanks/
 
 # Runtime data and renders 

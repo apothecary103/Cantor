@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod apply;
+mod curve;
 pub mod diag;
 mod document;
 pub mod history;

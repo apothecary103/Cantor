@@ -1,0 +1,13 @@
+[package]
+name = "cantor-fixtures"
+description = "Test fixtures for Cantor: pinned downloads verified by SHA-256 (models are never committed)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true

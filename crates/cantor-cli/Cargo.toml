@@ -1,0 +1,28 @@
+[package]
+name = "cantor-cli"
+description = "The `cantor` command-line interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "cantor"
+path = "src/main.rs"
+
+[dependencies]
+cantor-core.workspace = true
+cantor-io.workspace = true
+cantor-render.workspace = true
+cantor-backends.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+cantor-fixtures.workspace = true
+
+[lints]
+workspace = true
