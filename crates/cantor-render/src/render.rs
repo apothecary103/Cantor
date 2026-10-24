@@ -7,6 +7,7 @@ use crate::mix::{PlacedAudio, mix};
 use crate::phrase::{Phrase, split};
 use crate::pitch::base_pitch;
 use crate::rng::Rng;
+use cantor_analysis::{AnalysisReport, F0Extractor, F0Track, NoteTarget, TrackInput};
 use cantor_core::{Diagnostic, EntityRef, ParamId, PhraseId, Project, TempoMap, Track, TrackId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -99,6 +100,9 @@ pub struct RenderOutput {
     pub trace: RenderTrace,
     /// Everything the render could not honor.
     pub diagnostics: Vec<Diagnostic>,
+    /// Measurements of what was rendered, if the renderer has an F0
+    /// extractor.
+    pub analysis: Option<AnalysisReport>,
 }
 
 /// Why a render failed.
@@ -115,12 +119,16 @@ pub enum RenderError {
     /// The cache could not be written.
     #[error("render cache: {0}")]
     Cache(#[from] std::io::Error),
+    /// Pitch extraction for the analysis failed.
+    #[error("analysis failed: {0}")]
+    Analysis(String),
 }
 
 /// Renders projects with one backend and one cache.
 pub struct Renderer {
     backend: Arc<dyn Backend>,
     cache: DiskCache,
+    analyzer: Option<Arc<dyn F0Extractor>>,
 }
 
 impl std::fmt::Debug for Renderer {
@@ -135,7 +143,22 @@ impl std::fmt::Debug for Renderer {
 impl Renderer {
     /// Creates a renderer.
     pub fn new(backend: Arc<dyn Backend>, cache: DiskCache) -> Self {
-        Self { backend, cache }
+        Self {
+            backend,
+            cache,
+            analyzer: None,
+        }
+    }
+
+    /// Adds analysis to every render, extracting pitch with `extractor`.
+    pub fn with_analyzer(mut self, extractor: Arc<dyn F0Extractor>) -> Self {
+        self.analyzer = Some(extractor);
+        self
+    }
+
+    /// The render cache.
+    pub fn cache(&self) -> &DiskCache {
+        &self.cache
     }
 
     /// Renders every audible track of a project.
@@ -147,7 +170,7 @@ impl Renderer {
         let mut trace = RenderTrace::default();
         let any_solo = project.tracks.iter().any(|t| t.mix.solo);
 
-        let mut tracks: Vec<(&Track, Vec<f32>)> = Vec::new();
+        let mut tracks: Vec<(&Track, Vec<f32>, Vec<Phrase>)> = Vec::new();
         for track in &project.tracks {
             if track.mix.mute || (any_solo && !track.mix.solo) {
                 continue;
@@ -179,12 +202,15 @@ impl Renderer {
                 })
                 .collect();
             let len = (end * f64::from(sr)).ceil() as usize;
-            tracks.push((track, mix(&placed, sr, len)));
+            let mono = mix(&placed, sr, len);
+            drop(placed);
+            drop(rendered);
+            tracks.push((track, mono, phrases));
         }
 
-        let len = tracks.iter().map(|(_, a)| a.len()).max().unwrap_or(0);
+        let len = tracks.iter().map(|(_, a, _)| a.len()).max().unwrap_or(0);
         let mut samples = vec![0.0f32; len * 2];
-        for (track, mono) in &tracks {
+        for (track, mono, _) in &tracks {
             let gain = 10f64.powf(track.mix.gain_db / 20.0);
             // Equal-power pan.
             let angle = (track.mix.pan.clamp(-1.0, 1.0) + 1.0) * std::f64::consts::FRAC_PI_4;
@@ -194,15 +220,132 @@ impl Renderer {
                 samples[2 * i + 1] += s * gr;
             }
         }
+        let analysis = match &self.analyzer {
+            Some(x) => Some(self.analyze(x.as_ref(), &tracks, &samples, sr)?),
+            None => None,
+        };
         Ok(RenderOutput {
             sample_rate: sr,
             audio_hash: audio_hash(&samples),
             samples,
             trace,
             diagnostics,
+            analysis,
         })
     }
 
+    fn analyze(
+        &self,
+        extractor: &dyn F0Extractor,
+        tracks: &[(&Track, Vec<f32>, Vec<Phrase>)],
+        mix: &[f32],
+        sr: u32,
+    ) -> Result<AnalysisReport, RenderError> {
+        let mut inputs = Vec::with_capacity(tracks.len());
+        for (track, mono, phrases) in tracks {
+            let key = KeyBuilder::new("f0")
+                .str("extractor", extractor.id())
+                .u64("sample_rate", u64::from(sr))
+                .key("audio", &audio_hash(mono))
+                .finish();
+            let f0 = match self
+                .cache
+                .get(Kind::Prediction, &key)
+                .and_then(|b| serde_json::from_slice::<CachedF0>(&b).ok())
+            {
+                Some(c) => c.into_track(),
+                None => {
+                    let t = extractor.extract(mono, sr).map_err(RenderError::Analysis)?;
+                    let json =
+                        serde_json::to_vec(&CachedF0::from_track(&t)).expect("f0 serializes");
+                    self.cache.put(Kind::Prediction, &key, &json)?;
+                    t
+                }
+            };
+            let mut target = vec![0.0; f0.hz.len()];
+            let mut notes = Vec::new();
+            for ph in phrases {
+                let a = f0.frame_at(ph.start_sec() - 0.1).unwrap_or(0);
+                let b = f0.frame_at(ph.end_sec() + 0.1).unwrap_or(f0.hz.len());
+                if b > a {
+                    let t0 = f0.t0 + a as f64 * f0.hop_secs;
+                    let base = base_pitch(&ph.notes, t0, f0.hop_secs, b - a, ph.seed);
+                    target[a..b].copy_from_slice(&base);
+                }
+                for (i, n) in ph.notes.iter().enumerate() {
+                    let prev = i
+                        .checked_sub(1)
+                        .map(|j| &ph.notes[j])
+                        .filter(|p| n.start_sec - p.end_sec < 0.05);
+                    notes.push(NoteTarget {
+                        id: n.id,
+                        phrase: ph.id,
+                        lyric: n.lyric.clone(),
+                        start_sec: n.start_sec,
+                        end_sec: n.end_sec,
+                        sung: is_sung(&n.lyric),
+                        articulated: !n.lyric.trim().starts_with('+'),
+                        prev_cents: prev.map(|p| p.pitch_cents),
+                        cents: n.pitch_cents,
+                    });
+                }
+            }
+            let joins = phrases
+                .windows(2)
+                .map(|w| (w[0].end_sec() + w[1].start_sec()) / 2.0)
+                .collect();
+            inputs.push(TrackInput {
+                track: track.id,
+                samples: mono,
+                sample_rate: sr,
+                notes,
+                target_cents: target,
+                f0,
+                joins,
+            });
+        }
+        Ok(cantor_analysis::analyze(&inputs, mix, sr))
+    }
+}
+
+/// Whether a lyric is sung (not a rest or breath).
+fn is_sung(lyric: &str) -> bool {
+    !matches!(
+        lyric.trim(),
+        "" | "-" | "SP" | "R" | "r" | "AP" | "br" | "breath"
+    )
+}
+
+/// An F0 track in the cache.
+#[derive(Serialize, Deserialize)]
+struct CachedF0 {
+    hop_secs: f64,
+    t0: f64,
+    hz: Vec<f32>,
+    voiced: Vec<bool>,
+}
+
+impl CachedF0 {
+    fn from_track(t: &F0Track) -> Self {
+        Self {
+            hop_secs: t.hop_secs,
+            t0: t.t0,
+            hz: t.hz.clone(),
+            voiced: t.voiced.clone(),
+        }
+    }
+
+    fn into_track(self) -> F0Track {
+        F0Track {
+            hop_secs: self.hop_secs,
+            t0: self.t0,
+            hz: self.hz,
+            voiced: self.voiced,
+        }
+    }
+}
+
+impl Renderer {
     fn render_phrase(
         &self,
         track: &Track,

@@ -26,7 +26,7 @@ pub struct TimingStats {
 /// reaches half of the note's median energy. After a sung note (legato), it
 /// is where the pitch crosses the midpoint between the two notes.
 pub fn onset_error_ms(n: &NoteTarget, samples: &[f32], sr: u32, f0: &F0Track) -> Option<f64> {
-    if !n.sung {
+    if !n.sung || !n.articulated {
         return None;
     }
     let lo = f0.frame_at(n.start_sec - SEARCH_SECS).unwrap_or(0);
@@ -66,7 +66,14 @@ pub fn onset_error_ms(n: &NoteTarget, samples: &[f32], sr: u32, f0: &F0Track) ->
     let body: Vec<usize> = (hi..f0.frame_at(n.end_sec).unwrap_or(hi)).collect();
     let mut body_e: Vec<f64> = body.iter().map(|&i| energy(i)).collect();
     let median = percentile(&mut body_e, 50.0)?;
-    (lo..=hi)
+    // Legato into a note at (nearly) the same pitch: the consonant shows as
+    // an energy dip; the onset is the rise after the deepest dip.
+    let from = if f0.voiced.get(lo).copied().unwrap_or(false) {
+        (lo..=hi).min_by(|&a, &b| energy(a).total_cmp(&energy(b)))?
+    } else {
+        lo
+    };
+    (from..=hi)
         .find(|&i| f0.voiced[i] && energy(i) >= median / 2.0)
         .map(|i| (time(i) - n.start_sec) * 1000.0)
 }

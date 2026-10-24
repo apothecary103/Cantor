@@ -38,6 +38,14 @@ impl F0Track {
     }
 }
 
+/// Estimates F0 from audio.
+pub trait F0Extractor: Send + Sync {
+    /// Name and version, for reports and cache keys.
+    fn id(&self) -> &str;
+    /// F0 of mono `samples` at `sample_rate`, starting at time 0.
+    fn extract(&self, samples: &[f32], sample_rate: u32) -> Result<F0Track, String>;
+}
+
 /// What a note should sound like, for analysis.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NoteTarget {
@@ -53,6 +61,9 @@ pub struct NoteTarget {
     pub end_sec: f64,
     /// Whether the note is meant to be sung (not a rest or breath).
     pub sung: bool,
+    /// Whether the note starts a new syllable (not a `+` continuation), so
+    /// it has an onset to measure.
+    pub articulated: bool,
     /// Pitch of the previous note in the same phrase, if adjacent.
     pub prev_cents: Option<f64>,
     /// Pitch in cents.

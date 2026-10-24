@@ -39,6 +39,7 @@ pub struct Model {
     name: String,
     session: Mutex<Session>,
     inputs: Vec<String>,
+    outputs: Vec<String>,
     noise_inputs: Vec<String>,
 }
 
@@ -78,12 +79,28 @@ impl Model {
             .iter()
             .map(|o| o.name().to_owned())
             .collect();
+        let outputs = session
+            .outputs()
+            .iter()
+            .map(|o| o.name().to_owned())
+            .collect();
         Ok(Self {
             name,
             session: Mutex::new(session),
             inputs,
+            outputs,
             noise_inputs,
         })
+    }
+
+    /// The model's output names, in order.
+    pub fn output_names(&self) -> &[String] {
+        &self.outputs
+    }
+
+    /// The model's input names, in order.
+    pub fn input_names(&self) -> &[String] {
+        &self.inputs
     }
 
     /// Whether the model declares an input.

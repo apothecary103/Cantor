@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 cantor-core.workspace = true
+cantor-analysis.workspace = true
 blake3.workspace = true
 hound.workspace = true
 serde.workspace = true

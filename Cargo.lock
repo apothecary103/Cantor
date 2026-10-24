@@ -194,11 +194,13 @@ dependencies = [
 name = "cantor-backends"
 version = "0.1.0"
 dependencies = [
+ "cantor-analysis",
  "cantor-core",
  "cantor-fixtures",
  "cantor-phon",
  "cantor-render",
  "ort",
+ "realfft",
  "serde",
  "serde-saphyr",
  "serde_json",
@@ -272,6 +274,7 @@ name = "cantor-render"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "cantor-analysis",
  "cantor-core",
  "hound",
  "proptest",

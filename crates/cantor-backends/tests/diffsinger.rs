@@ -148,3 +148,55 @@ fn pitch_only_edit_uses_vocoder_fast_path() {
         "the fast path equals a cold render"
     );
 }
+
+fn rmvpe() -> Arc<cantor_backends::rmvpe::Rmvpe> {
+    static R: OnceLock<Arc<cantor_backends::rmvpe::Rmvpe>> = OnceLock::new();
+    R.get_or_init(|| {
+        let p = cantor_fixtures::ensure(&cantor_fixtures::RMVPE).expect("RMVPE fixture");
+        Arc::new(cantor_backends::rmvpe::Rmvpe::load(&p).expect("load RMVPE"))
+    })
+    .clone()
+}
+
+#[test]
+fn render_returns_an_analysis_report() {
+    let r = Renderer::new(backend(), cache("analysis")).with_analyzer(rmvpe());
+    let out = r.render(&project(), Quality::Preview).unwrap();
+    let a = out.analysis.expect("analysis report");
+    let t = &a.tracks[0];
+    for n in &t.notes {
+        eprintln!(
+            "{:>6} {:<6} mean {:>6.1} p95 {:>6.1} bias {:>+6.1} voiced {:.2} onset {:?} ms",
+            n.id.to_string(),
+            n.lyric,
+            n.pitch_error_mean.unwrap_or(f64::NAN),
+            n.pitch_error_p95.unwrap_or(f64::NAN),
+            n.pitch_bias.unwrap_or(f64::NAN),
+            n.voiced_ratio,
+            n.onset_error_ms.map(|x| x.round())
+        );
+    }
+    eprintln!(
+        "track: {:?}\ntiming: {:?}\nloudness: {:?}\nartifacts: {:?}",
+        t.pitch, t.timing, a.loudness.integrated_lufs, a.artifacts
+    );
+    assert_eq!(t.notes.len(), 8);
+    // Every sung note is measured, close to the score, and voiced.
+    let sung: Vec<_> = t.notes.iter().filter(|n| n.lyric != "+").collect();
+    assert!(sung.iter().all(|n| n.voiced_ratio > 0.8), "voicing");
+    assert!(
+        t.pitch.p95_cents.unwrap() < 100.0,
+        "p95 {:?}",
+        t.pitch.p95_cents
+    );
+    assert_eq!(t.pitch.octave_errors, 0);
+    assert!(t.timing.measured >= 6);
+    let lufs = a.loudness.integrated_lufs.unwrap();
+    assert!((-40.0..-6.0).contains(&lufs), "integrated {lufs} LUFS");
+    assert!(a.loudness.true_peak_dbtp.unwrap() < 0.0);
+    assert!(
+        !a.artifacts
+            .iter()
+            .any(|x| x.kind == cantor_analysis::artifacts::ArtifactKind::Clipping)
+    );
+}

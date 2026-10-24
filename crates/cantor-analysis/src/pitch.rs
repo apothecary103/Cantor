@@ -163,6 +163,7 @@ mod tests {
             start_sec: start,
             end_sec: end,
             sung: true,
+            articulated: true,
             prev_cents: None,
             cents,
         }

@@ -86,39 +86,42 @@ fn rms(x: &[f32]) -> f64 {
     (x.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / x.len() as f64).sqrt()
 }
 
-/// Sample-to-sample jumps at joins, relative to the local signal.
+/// Clicks at phrase joins: a second-difference spike within ±2 ms of the
+/// join that stands far above the signal's curvature in the surrounding
+/// ±20 ms, at an audible level (above −60 dBFS).
 fn discontinuities(t: &TrackInput<'_>) -> Vec<Artifact> {
     let sr = f64::from(t.sample_rate);
-    let w = (0.010 * sr) as usize;
+    let near = (0.002 * sr) as usize;
+    let around = (0.020 * sr) as usize;
     let mut out = Vec::new();
     for &j in &t.joins {
         let c = (j * sr) as usize;
-        if c < 2 * w || c + 2 * w >= t.samples.len() {
+        if c < around + 1 || c + around + 1 >= t.samples.len() {
             continue;
         }
-        let local = &t.samples[c - 2 * w..c + 2 * w];
-        let level = rms(local);
-        if level < 1e-4 {
+        let local = &t.samples[c - around..c + around];
+        if rms(local) < 1e-3 {
             continue;
         }
-        let diffs: Vec<f64> = local
-            .windows(2)
-            .map(|p| f64::from((p[1] - p[0]).abs()))
+        let d2 =
+            |k: usize| f64::from((t.samples[k + 1] - 2.0 * t.samples[k] + t.samples[k - 1]).abs());
+        let spike = (c - near..c + near).map(d2).fold(0.0, f64::max);
+        let mut rest: Vec<f64> = (c - around..c - near)
+            .chain(c + near..c + around)
+            .map(d2)
             .collect();
-        let mut sorted = diffs.clone();
-        sorted.sort_by(f64::total_cmp);
-        let typical = sorted[sorted.len() / 2].max(1e-6);
-        let worst = sorted[sorted.len() - 1];
-        if worst > 8.0 * typical && worst > 2.0 * level {
+        rest.sort_by(f64::total_cmp);
+        let typical = rest[rest.len() * 99 / 100].max(1e-7);
+        if spike > 6.0 * typical {
             out.push(Artifact {
                 kind: ArtifactKind::Discontinuity,
                 track: Some(t.track),
                 at_sec: j,
                 duration_sec: 0.0,
-                magnitude: worst / typical,
+                magnitude: spike / typical,
                 detail: format!(
-                    "waveform jump {:.1}× the typical step at a phrase join",
-                    worst / typical
+                    "click at a phrase join: curvature {:.1}× the surrounding 99th percentile",
+                    spike / typical
                 ),
             });
         }
