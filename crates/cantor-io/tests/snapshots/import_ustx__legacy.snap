@@ -1,0 +1,134 @@
+---
+source: crates/cantor-io/tests/import_ustx.rs
+expression: snapshot_value(&imported)
+---
+{
+  "diagnostics": [
+    {
+      "code": "ustx.phonemizer",
+      "message": "track `Track 1`: phonemizer `OpenUtau.Core.DefaultPhonemizer` not carried over; Cantor picks the phonemizer from the singer",
+      "severity": "info",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "ustx.part_length_derived",
+      "message": "voice part `Melody` has no duration; its length was set to 5760 ticks from its notes",
+      "severity": "info",
+      "target": {
+        "id": 2,
+        "kind": "part"
+      }
+    },
+    {
+      "code": "ustx.portamento_approximated",
+      "message": "pitch points approximated by Cantor's portamento: transitions from a fixed offset (snap_first off) start from the previous note instead (1 note)",
+      "severity": "info",
+      "target": {
+        "id": 4,
+        "kind": "note"
+      }
+    }
+  ],
+  "project": {
+    "key_map": [],
+    "meta": {
+      "artist": "",
+      "comment": "",
+      "title": "Legacy Waltz"
+    },
+    "seeds": {},
+    "takes": {},
+    "tempo_map": [
+      {
+        "bpm": 98.0,
+        "tick": 0
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "denominator": 4,
+        "numerator": 3
+      }
+    ],
+    "tracks": [
+      {
+        "backend": "utau",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 1,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Track 1",
+        "parts": [
+          {
+            "id": 2,
+            "length": 5760,
+            "name": "Melody",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 50.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 3,
+                "length": 2880,
+                "lyric": "1",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6200.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.0,
+                    "length_ms": 50.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 4,
+                "length": 2880,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6400.0,
+                "start": 2880
+              }
+            ],
+            "start": 5760
+          }
+        ],
+        "singer": {
+          "id": "Example Voice CV"
+        },
+        "voice_mix": []
+      }
+    ]
+  }
+}
