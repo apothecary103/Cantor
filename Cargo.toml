@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/apothecary103/Cantor"
+publish = false
+
+[workspace.dependencies]
+cantor-core = { path = "crates/cantor-core" }
+cantor-io = { path = "crates/cantor-io" }
+
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+schemars = "=1.2.3"
+thiserror = "=2.0.21"
+midly = "=0.5.3"
+quick-xml = "=0.42.0"
+serde-saphyr = "=2.0.0"
+zstd = "=0.14.3"
+
+proptest = "=1.12.0"
+insta = { version = "=1.49.0", features = ["json"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+# Cranelift on aarch64-darwin emits CFI that ld64 cannot turn into compact
+# unwind info; ld falls back to DWARF unwinding and says so for every symbol.
+# See docs/decisions/0002-cranelift-dev-builds.md.
+linker_messages = "allow"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+# Snapshot tests diff faster with an optimized insta/similar.
+[profile.dev.package.insta]
+opt-level = 3
+[profile.dev.package.similar]
+opt-level = 3

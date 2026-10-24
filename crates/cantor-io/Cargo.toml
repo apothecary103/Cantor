@@ -1,0 +1,25 @@
+[package]
+name = "cantor-io"
+description = "Cantor file formats: .cantor projects, USTX, MIDI and MusicXML import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+cantor-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+thiserror.workspace = true
+zstd.workspace = true
+midly.workspace = true
+quick-xml.workspace = true
+serde-saphyr.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true

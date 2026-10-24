@@ -1,0 +1,15 @@
+[toolchain]
+# Pinned nightly. Change the date only here, then update the fenix sha256 in
+# flake.nix (see docs/spec/10-stack.md, "Toolchain bumps").
+channel = "nightly-2026-10-20"
+components = [
+  "rustc",
+  "cargo",
+  "rust-std",
+  "rust-src",
+  "rustfmt",
+  "clippy",
+  "miri",
+  "rustc-codegen-cranelift-preview",
+]
+profile = "minimal"

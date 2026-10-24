@@ -1,0 +1,13 @@
+[alias]
+xtask = "run --quiet --package xtask --"
+
+# Debug builds use Cranelift, release builds use LLVM. `cargo xtask ci`
+# asserts this. See docs/decisions/0002-cranelift-dev-builds.md.
+[unstable]
+codegen-backend = true
+
+[profile.dev]
+codegen-backend = "cranelift"
+
+[profile.release]
+codegen-backend = "llvm"

@@ -24,7 +24,7 @@
           # lib.fakeSha256, run `nix develop`, and paste the hash from the error.
           rust = fenix.packages.${system}.fromToolchainFile {
             file = ./rust-toolchain.toml;
-            sha256 = lib.fakeSha256;
+            sha256 = "sha256-ZBbs8/vrgUCyEPZ+2MU1MQEIDLVI05q8t1JRuFFQytw=";
           };
 
           # Libraries GPUI and cpal load at runtime on Linux.
@@ -45,7 +45,7 @@
               python3
               maturin
               wasm-tools
-              nixfmt-rfc-style
+              nixfmt
             ];
 
             buildInputs =
@@ -69,7 +69,22 @@
             '';
           };
 
-          formatter = pkgs.nixfmt-rfc-style;
+          # Latest stable Rust, for crates that must build without nightly
+          # (cantor-plugin-sdk). CI: `nix develop .#stable --command ...`.
+          devShells.stable = pkgs.mkShell {
+            nativeBuildInputs = [
+              (fenix.packages.${system}.stable.withComponents [
+                "cargo"
+                "rustc"
+                "rust-std"
+              ])
+            ];
+            shellHook = ''
+              echo "cantor stable shell: $(rustc --version)"
+            '';
+          };
+
+          formatter = pkgs.nixfmt;
         };
     };
 }
