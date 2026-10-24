@@ -1,0 +1,87 @@
+# Rust 
+/target/
+**/*.rs.bk
+# Cargo.lock is committed on purpose (exact pins, reproducible builds).
+
+# Coverage and profiling
+*.profraw
+*.profdata
+lcov.info
+/coverage/
+perf.data
+perf.data.old
+flamegraph.svg
+*.trace/
+
+# insta: pending snapshots are reviewed, then accepted or deleted
+*.snap.new
+*.pending-snap
+
+# Nix / direnv 
+/.direnv/
+result
+result-*
+
+# Python (cantor-py, maturin) 
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+/crates/cantor-py/python/cantor/*.so
+/crates/cantor-py/python/cantor/*.pyd
+/dist/wheels/
+
+# WebAssembly plugins 
+*.wasm
+!crates/cantor-phon/tests/fixtures/**/*.wasm
+
+# Models, voicebanks, downloaded fixtures 
+# Weights are never committed; tests download them by checksum.
+*.onnx
+*.ort
+*.pt
+*.ckpt
+*.safetensors
+*.metallib
+/tests/fixtures/downloaded/
+/voicebanks/
+
+# Runtime data and renders 
+/.cantor-cache/
+/renders/
+*.cantor.autosave
+*.cantor.lock
+
+# Packaging 
+/dist/
+*.dmg
+*.AppImage
+*.flatpak
+/.flatpak-builder/
+/flatpak-build/
+
+# Local config and secrets 
+.env
+.env.*
+!.env.example
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Editors and OS 
+.DS_Store
+.AppleDouble
+._*
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+.zed/
+!.zed/settings.json
