@@ -164,7 +164,7 @@ impl F0Extractor for Rmvpe {
 
 /// RMVPE's bin → cents (relative to 10 Hz) mapping.
 fn cents_of_bin(i: usize) -> f64 {
-    20.0 * i as f64 + 1997.379_408_437_619_1
+    20.0 * i as f64 + 1_997.379_408_437_619
 }
 
 fn hz_to_mel_htk(f: f64) -> f64 {
