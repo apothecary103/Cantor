@@ -38,7 +38,9 @@ jobs:
           key: cargo-${{ runner.os }}-ci-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: cargo-${{ runner.os }}-ci-
       - name: No placeholder toolchain hash
-        run: "! grep -n 'fakeSha256' flake.nix"
+        # Matches the assignment only; the comment explaining the bump
+        # procedure mentions lib.fakeSha256 on purpose.
+        run: "! grep -nE 'sha256 *= *lib\\.fakeSha256' flake.nix"
       - name: nix flake check
         run: nix flake check
       - name: cargo xtask ci
