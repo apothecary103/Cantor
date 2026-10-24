@@ -1,0 +1,1646 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Op",
+  "description": "An edit to a project.",
+  "oneOf": [
+    {
+      "description": "Applies several ops atomically, as one undo step.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "description": "Name shown in the history.",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "batch"
+        },
+        "ops": {
+          "description": "Ops in order.",
+          "type": "array",
+          "items": {
+            "$ref": "#"
+          }
+        }
+      },
+      "required": [
+        "op",
+        "label",
+        "ops"
+      ]
+    },
+    {
+      "description": "Changes title and credits.",
+      "type": "object",
+      "properties": {
+        "meta": {
+          "description": "The new metadata.",
+          "$ref": "#/$defs/Meta"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_meta"
+        }
+      },
+      "required": [
+        "op",
+        "meta"
+      ]
+    },
+    {
+      "description": "Adds or replaces the tempo at a tick.",
+      "type": "object",
+      "properties": {
+        "bpm": {
+          "description": "Quarter notes per minute.",
+          "type": "number",
+          "format": "double"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_tempo"
+        },
+        "tick": {
+          "description": "Where the tempo takes effect, ≥ 0.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "op",
+        "tick",
+        "bpm"
+      ]
+    },
+    {
+      "description": "Removes the tempo change at a tick. The tempo at tick 0 cannot be\nremoved.",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "remove_tempo"
+        },
+        "tick": {
+          "description": "Tick of the tempo change.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "op",
+        "tick"
+      ]
+    },
+    {
+      "description": "Adds or replaces the time signature at a bar.",
+      "type": "object",
+      "properties": {
+        "bar": {
+          "description": "0-based bar.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "denominator": {
+          "description": "Beat unit, a power of two.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "numerator": {
+          "description": "Beats per bar.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "set_time_sig"
+        }
+      },
+      "required": [
+        "op",
+        "bar",
+        "numerator",
+        "denominator"
+      ]
+    },
+    {
+      "description": "Removes the time signature at a bar (not bar 0).",
+      "type": "object",
+      "properties": {
+        "bar": {
+          "description": "0-based bar.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "remove_time_sig"
+        }
+      },
+      "required": [
+        "op",
+        "bar"
+      ]
+    },
+    {
+      "description": "Adds or replaces the key at a tick.",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "set_key"
+        },
+        "scale": {
+          "description": "Scale or mode.",
+          "$ref": "#/$defs/Scale"
+        },
+        "tick": {
+          "description": "Where the key takes effect, ≥ 0.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "tonic": {
+          "description": "Tonic pitch class, 0 = C … 11 = B.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "op",
+        "tick",
+        "tonic",
+        "scale"
+      ]
+    },
+    {
+      "description": "Removes the key change at a tick.",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "remove_key"
+        },
+        "tick": {
+          "description": "Tick of the key change.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "op",
+        "tick"
+      ]
+    },
+    {
+      "description": "Sets or clears a phrase's diffusion noise seed.",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "set_seed"
+        },
+        "phrase": {
+          "description": "The phrase.",
+          "$ref": "#/$defs/PhraseId"
+        },
+        "seed": {
+          "description": "The seed; `None` removes it.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "op",
+        "phrase"
+      ]
+    },
+    {
+      "description": "Chooses which take of a phrase plays.",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "select_take"
+        },
+        "phrase": {
+          "description": "The phrase.",
+          "$ref": "#/$defs/PhraseId"
+        },
+        "take": {
+          "description": "The take; `None` selects the original.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TakeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "op",
+        "phrase"
+      ]
+    },
+    {
+      "description": "Inserts a track (with any parts, notes and curves it carries).",
+      "type": "object",
+      "properties": {
+        "index": {
+          "description": "Position in the track list; `None` appends.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "add_track"
+        },
+        "track": {
+          "description": "The track. All ids inside must be unused.",
+          "$ref": "#/$defs/Track"
+        }
+      },
+      "required": [
+        "op",
+        "track"
+      ]
+    },
+    {
+      "description": "Removes a track and everything on it.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        },
+        "op": {
+          "type": "string",
+          "const": "remove_track"
+        }
+      },
+      "required": [
+        "op",
+        "id"
+      ]
+    },
+    {
+      "description": "Moves a track to a new position in the track list.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        },
+        "index": {
+          "description": "New position.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "move_track"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "index"
+      ]
+    },
+    {
+      "description": "Changes track settings. Fields left out are unchanged.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_track"
+        },
+        "patch": {
+          "description": "The changes.",
+          "$ref": "#/$defs/TrackPatch"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "patch"
+      ]
+    },
+    {
+      "description": "Adds a part (with any notes it carries) to a track.",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "add_part"
+        },
+        "part": {
+          "description": "The part. All ids inside must be unused.",
+          "$ref": "#/$defs/Part"
+        },
+        "track": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        }
+      },
+      "required": [
+        "op",
+        "track",
+        "part"
+      ]
+    },
+    {
+      "description": "Removes a part and its notes.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The part.",
+          "$ref": "#/$defs/PartId"
+        },
+        "op": {
+          "type": "string",
+          "const": "remove_part"
+        }
+      },
+      "required": [
+        "op",
+        "id"
+      ]
+    },
+    {
+      "description": "Moves a part in time. Its notes move with it.",
+      "type": "object",
+      "properties": {
+        "carry_curves": {
+          "description": "Also move the track's curve points under the part.",
+          "type": "boolean"
+        },
+        "dt": {
+          "description": "Tick offset.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "description": "The part.",
+          "$ref": "#/$defs/PartId"
+        },
+        "op": {
+          "type": "string",
+          "const": "move_part"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "dt",
+        "carry_curves"
+      ]
+    },
+    {
+      "description": "Renames or resizes a part.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The part.",
+          "$ref": "#/$defs/PartId"
+        },
+        "length": {
+          "description": "New length in ticks.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "name": {
+          "description": "New name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op": {
+          "type": "string",
+          "const": "set_part"
+        }
+      },
+      "required": [
+        "op",
+        "id"
+      ]
+    },
+    {
+      "description": "Adds a note to a part.",
+      "type": "object",
+      "properties": {
+        "note": {
+          "description": "The note; its id must be unused.",
+          "$ref": "#/$defs/Note"
+        },
+        "op": {
+          "type": "string",
+          "const": "add_note"
+        },
+        "part": {
+          "description": "The part.",
+          "$ref": "#/$defs/PartId"
+        }
+      },
+      "required": [
+        "op",
+        "part",
+        "note"
+      ]
+    },
+    {
+      "description": "Removes notes.",
+      "type": "object",
+      "properties": {
+        "ids": {
+          "description": "The notes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NoteId"
+          }
+        },
+        "op": {
+          "type": "string",
+          "const": "remove_notes"
+        }
+      },
+      "required": [
+        "op",
+        "ids"
+      ]
+    },
+    {
+      "description": "Moves notes in time and pitch.",
+      "type": "object",
+      "properties": {
+        "carry_curves": {
+          "description": "Also move the track's curve points under the notes (default).",
+          "type": "boolean"
+        },
+        "dcents": {
+          "description": "Pitch offset in cents.",
+          "type": "number",
+          "format": "double"
+        },
+        "dt": {
+          "description": "Tick offset.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "ids": {
+          "description": "The notes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NoteId"
+          }
+        },
+        "op": {
+          "type": "string",
+          "const": "move_notes"
+        }
+      },
+      "required": [
+        "op",
+        "ids",
+        "dt",
+        "dcents",
+        "carry_curves"
+      ]
+    },
+    {
+      "description": "Changes a note's length.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The note.",
+          "$ref": "#/$defs/NoteId"
+        },
+        "length": {
+          "description": "New length in ticks, ≥ 1.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "op": {
+          "type": "string",
+          "const": "resize_note"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "length"
+      ]
+    },
+    {
+      "description": "Changes a note's lyric.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The note.",
+          "$ref": "#/$defs/NoteId"
+        },
+        "lyric": {
+          "description": "New lyric.",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_lyric"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "lyric"
+      ]
+    },
+    {
+      "description": "Sets or clears a note's phoneme overrides.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The note.",
+          "$ref": "#/$defs/NoteId"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_phonemes"
+        },
+        "phonemes": {
+          "description": "Overrides; `None` returns control to the phonemizer.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/PhonemeOverride"
+          }
+        }
+      },
+      "required": [
+        "op",
+        "id"
+      ]
+    },
+    {
+      "description": "Changes a note's expression. Fields left out are unchanged.",
+      "type": "object",
+      "properties": {
+        "expr": {
+          "description": "The changes.",
+          "$ref": "#/$defs/NoteExprPatch"
+        },
+        "id": {
+          "description": "The note.",
+          "$ref": "#/$defs/NoteId"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_note_expr"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "expr"
+      ]
+    },
+    {
+      "description": "Replaces a note's vocal mode weights.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The note.",
+          "$ref": "#/$defs/NoteId"
+        },
+        "modes": {
+          "description": "New weights.",
+          "$ref": "#/$defs/VocalModes"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_vocal_modes"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "modes"
+      ]
+    },
+    {
+      "description": "Replaces existing notes wholesale, matched by id. Each note stays in\nits part. Undo uses this to restore notes exactly.",
+      "type": "object",
+      "properties": {
+        "notes": {
+          "description": "The new note contents.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Note"
+          }
+        },
+        "op": {
+          "type": "string",
+          "const": "replace_notes"
+        }
+      },
+      "required": [
+        "op",
+        "notes"
+      ]
+    },
+    {
+      "description": "Replaces the user layer of a curve within a range: points in\n`[range.start, range.end)` are removed, then `points` are inserted.",
+      "type": "object",
+      "properties": {
+        "interp": {
+          "description": "Interpolation for the whole user layer.",
+          "$ref": "#/$defs/Interp"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_curve"
+        },
+        "param": {
+          "description": "The parameter.",
+          "$ref": "#/$defs/ParamId"
+        },
+        "points": {
+          "description": "New points, strictly increasing ticks, all inside `range`.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer",
+                "format": "int64"
+              },
+              {
+                "type": "number",
+                "format": "double"
+              }
+            ]
+          }
+        },
+        "range": {
+          "description": "Range to replace.",
+          "$ref": "#/$defs/TickRange"
+        },
+        "track": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        }
+      },
+      "required": [
+        "op",
+        "track",
+        "param",
+        "range",
+        "points",
+        "interp"
+      ]
+    },
+    {
+      "description": "Replaces a whole layered curve, or removes it with `None`. Undo uses\nthis to restore curves exactly.",
+      "type": "object",
+      "properties": {
+        "curve": {
+          "description": "The curve; `None` removes it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LayeredCurve"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "op": {
+          "type": "string",
+          "const": "restore_curve"
+        },
+        "param": {
+          "description": "The parameter.",
+          "$ref": "#/$defs/ParamId"
+        },
+        "track": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        }
+      },
+      "required": [
+        "op",
+        "track",
+        "param"
+      ]
+    }
+  ],
+  "$defs": {
+    "BackendRef": {
+      "description": "Names a synthesis backend, such as `\"diffsinger\"` or `\"utau\"`.",
+      "type": "string"
+    },
+    "Curve": {
+      "description": "A curve: control points with an interpolation mode.",
+      "type": "object",
+      "properties": {
+        "interp": {
+          "description": "How values between points are interpolated.",
+          "$ref": "#/$defs/Interp",
+          "default": "monotone_hermite"
+        },
+        "points": {
+          "description": "`(tick, value)` points with strictly increasing ticks.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer",
+                "format": "int64"
+              },
+              {
+                "type": "number",
+                "format": "double"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "points"
+      ]
+    },
+    "Doubling": {
+      "description": "Voice doubling: extra layers with seeded micro-variations.",
+      "type": "object",
+      "properties": {
+        "detune_cents": {
+          "description": "Pitch variation between layers in cents.",
+          "type": "number",
+          "format": "double",
+          "default": 8.0
+        },
+        "jitter_ms": {
+          "description": "Timing variation between layers in milliseconds.",
+          "type": "number",
+          "format": "double",
+          "default": 12.0
+        },
+        "layers": {
+          "description": "Number of voices, 1 (off) … 16.",
+          "type": "integer",
+          "format": "uint8",
+          "default": 1,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "seed": {
+          "description": "Seed for the variations.",
+          "type": "integer",
+          "format": "uint64",
+          "default": 0,
+          "minimum": 0
+        },
+        "spacing": {
+          "description": "Stereo spread, 0 … 1.",
+          "type": "number",
+          "format": "double",
+          "default": 0.5
+        }
+      },
+      "additionalProperties": false
+    },
+    "EffectKind": {
+      "description": "Built-in effects.",
+      "type": "string",
+      "enum": [
+        "eq",
+        "compressor",
+        "de_esser",
+        "reverb"
+      ]
+    },
+    "EffectSlot": {
+      "description": "One effect in a track's chain.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Bypassed when false.",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "Which effect.",
+          "$ref": "#/$defs/EffectKind"
+        },
+        "params": {
+          "description": "Effect parameters by name.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "enabled"
+      ]
+    },
+    "Envelope": {
+      "description": "Attack or release shaping.",
+      "type": "object",
+      "properties": {
+        "length_ms": {
+          "description": "Length in milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "strength": {
+          "description": "Strength, 0 … 1.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "length_ms",
+        "strength"
+      ]
+    },
+    "Interp": {
+      "description": "Interpolation between curve points.",
+      "oneOf": [
+        {
+          "description": "Hold each value until the next point.",
+          "type": "string",
+          "const": "step"
+        },
+        {
+          "description": "Straight lines.",
+          "type": "string",
+          "const": "linear"
+        },
+        {
+          "description": "Fritsch–Carlson monotone cubic; never overshoots.",
+          "type": "string",
+          "const": "monotone_hermite"
+        }
+      ]
+    },
+    "LangTag": {
+      "description": "A BCP 47 language tag, such as `\"ja\"` or `\"en-US\"`.",
+      "type": "string"
+    },
+    "LayeredCurve": {
+      "description": "A layered parameter: `final = base(notes) + model_prediction + user_delta`.\nUsers and agents edit `user_delta`; the backend writes `model_prediction`.",
+      "type": "object",
+      "properties": {
+        "model_prediction": {
+          "description": "Produced by the backend; retakeable.",
+          "$ref": "#/$defs/Curve",
+          "default": {
+            "interp": "monotone_hermite",
+            "points": []
+          }
+        },
+        "user_delta": {
+          "description": "Edited by users and agents.",
+          "$ref": "#/$defs/Curve",
+          "default": {
+            "interp": "monotone_hermite",
+            "points": []
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Meta": {
+      "description": "Title and credits.",
+      "type": "object",
+      "properties": {
+        "artist": {
+          "description": "Artist or author.",
+          "type": "string",
+          "default": ""
+        },
+        "comment": {
+          "description": "Free-form notes.",
+          "type": "string",
+          "default": ""
+        },
+        "title": {
+          "description": "Song title.",
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false
+    },
+    "Mix": {
+      "description": "Track mixer settings.",
+      "type": "object",
+      "properties": {
+        "gain_db": {
+          "description": "Gain in dB.",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        },
+        "mute": {
+          "description": "Muted.",
+          "type": "boolean",
+          "default": false
+        },
+        "pan": {
+          "description": "Pan, -1 (left) … 1 (right).",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        },
+        "solo": {
+          "description": "Soloed.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Note": {
+      "description": "A sung note.",
+      "type": "object",
+      "properties": {
+        "expr": {
+          "description": "Vibrato, portamento, attack and release.",
+          "$ref": "#/$defs/NoteExpr",
+          "default": {
+            "portamento": {
+              "before": 0.6,
+              "overshoot_cents": 0.0,
+              "preparation_cents": 0.0
+            }
+          }
+        },
+        "id": {
+          "description": "Unique id.",
+          "$ref": "#/$defs/NoteId"
+        },
+        "lang": {
+          "description": "Language override; `None` uses the singer's default language.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LangTag"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "length": {
+          "description": "Length in ticks, at least 1.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "lyric": {
+          "description": "Lyric text. `+` continues the previous syllable; a leading or\ntrailing `-` joins syllables of one word.",
+          "type": "string"
+        },
+        "modes": {
+          "description": "Vocal mode weights.",
+          "$ref": "#/$defs/VocalModes",
+          "default": {
+            "pitch": {},
+            "pronunciation": {},
+            "timbre": {}
+          }
+        },
+        "phonemes": {
+          "description": "Phoneme overrides; `None` lets the phonemizer decide.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/PhonemeOverride"
+          }
+        },
+        "pitch_cents": {
+          "description": "Pitch in cents, MIDI note number × 100. Microtonal by default.",
+          "type": "number",
+          "format": "double"
+        },
+        "start": {
+          "description": "Start tick relative to the part.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "start",
+        "length",
+        "pitch_cents",
+        "lyric"
+      ]
+    },
+    "NoteExpr": {
+      "description": "Note expression.",
+      "type": "object",
+      "properties": {
+        "attack": {
+          "description": "Onset shaping, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Envelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "portamento": {
+          "description": "Transition into this note.",
+          "$ref": "#/$defs/Portamento",
+          "default": {
+            "before": 0.6,
+            "overshoot_cents": 0.0,
+            "preparation_cents": 0.0
+          }
+        },
+        "release": {
+          "description": "Release shaping, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Envelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vibrato": {
+          "description": "Procedural vibrato, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Vibrato"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NoteExprPatch": {
+      "description": "Changes to a note's expression. A missing field is unchanged; for\noptional settings, `null` removes the setting.",
+      "type": "object",
+      "properties": {
+        "attack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Envelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "portamento": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Portamento"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Envelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vibrato": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Vibrato"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NoteId": {
+      "description": "Identifies a note.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "ParamId": {
+      "description": "Names a curve parameter, such as `\"breathiness\"`. Known parameters are\nlisted by [`registry`]; ops naming anything else return a diagnostic.",
+      "type": "string"
+    },
+    "Part": {
+      "description": "A region of notes on a track. Note positions are relative to `start`.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Unique id.",
+          "$ref": "#/$defs/PartId"
+        },
+        "length": {
+          "description": "Length in ticks.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "description": "Display name.",
+          "type": "string"
+        },
+        "notes": {
+          "description": "Notes, sorted by (start, id).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Note"
+          }
+        },
+        "start": {
+          "description": "Absolute start tick.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "start",
+        "length"
+      ]
+    },
+    "PartId": {
+      "description": "Identifies a part (a region of notes on a track).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "PhonemeAlphabet": {
+      "description": "Which symbol set a phoneme uses.",
+      "oneOf": [
+        {
+          "description": "The phonemizer's own symbols.",
+          "type": "string",
+          "const": "native"
+        },
+        {
+          "description": "Universal X-SAMPA.",
+          "type": "string",
+          "const": "x_sampa"
+        }
+      ]
+    },
+    "PhonemeOverride": {
+      "description": "A user-specified phoneme.",
+      "type": "object",
+      "properties": {
+        "alphabet": {
+          "description": "Symbol alphabet.",
+          "$ref": "#/$defs/PhonemeAlphabet",
+          "default": "native"
+        },
+        "length_ms": {
+          "description": "Pinned length in milliseconds; `None` lets the duration model decide.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "offset_ms": {
+          "description": "Onset relative to the note onset in milliseconds; `None` = automatic.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "symbol": {
+          "description": "Phoneme symbol.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "symbol"
+      ]
+    },
+    "PhraseId": {
+      "description": "Identifies a phrase, the unit of rendering, seeding and retakes.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "Portamento": {
+      "description": "Portamento into a note: a cosine-eased transition from the previous pitch.",
+      "type": "object",
+      "properties": {
+        "before": {
+          "description": "Fraction of the transition before the note boundary, 0 … 1.",
+          "type": "number",
+          "format": "double",
+          "default": 0.6
+        },
+        "length_ms": {
+          "description": "Transition length in milliseconds; `None` = automatic.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "overshoot_cents": {
+          "description": "Overshoot past the target pitch in cents.",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        },
+        "preparation_cents": {
+          "description": "Dip opposite to the transition direction before it starts, in cents.",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Scale": {
+      "description": "A scale or mode for key signatures.",
+      "type": "string",
+      "enum": [
+        "major",
+        "minor",
+        "dorian",
+        "phrygian",
+        "lydian",
+        "mixolydian",
+        "locrian",
+        "chromatic"
+      ]
+    },
+    "SingerRef": {
+      "description": "Names a singer (voicebank).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Singer identifier; empty means none selected.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Singer version, if pinned.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "TakeId": {
+      "description": "Identifies a take within a phrase's take lane.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "TickRange": {
+      "description": "A half-open tick range `[start, end)`.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "description": "First tick after the range.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "start": {
+          "description": "First tick in the range.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ]
+    },
+    "Track": {
+      "description": "A singing track.",
+      "type": "object",
+      "properties": {
+        "backend": {
+          "description": "The synthesis backend.",
+          "$ref": "#/$defs/BackendRef"
+        },
+        "curves": {
+          "description": "Layered parameter curves, in absolute ticks.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/LayeredCurve"
+          },
+          "default": {}
+        },
+        "doubling": {
+          "description": "Voice doubling.",
+          "$ref": "#/$defs/Doubling",
+          "default": {
+            "detune_cents": 8.0,
+            "jitter_ms": 12.0,
+            "layers": 1,
+            "seed": 0,
+            "spacing": 0.5
+          }
+        },
+        "effects": {
+          "description": "Post-processing chain, in order.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EffectSlot"
+          }
+        },
+        "id": {
+          "description": "Unique id.",
+          "$ref": "#/$defs/TrackId"
+        },
+        "mix": {
+          "description": "Gain, pan, mute and solo.",
+          "$ref": "#/$defs/Mix",
+          "default": {
+            "gain_db": 0.0,
+            "mute": false,
+            "pan": 0.0,
+            "solo": false
+          }
+        },
+        "name": {
+          "description": "Display name.",
+          "type": "string"
+        },
+        "parts": {
+          "description": "Parts, sorted by (start, id).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Part"
+          }
+        },
+        "singer": {
+          "description": "The voice that sings this track.",
+          "$ref": "#/$defs/SingerRef"
+        },
+        "voice_mix": {
+          "description": "Timbre blending with other singers, if the backend supports it.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VoiceMixEntry"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "singer",
+        "backend"
+      ]
+    },
+    "TrackId": {
+      "description": "Identifies a track.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "TrackPatch": {
+      "description": "Changes to a track's settings. `None` fields are unchanged.",
+      "type": "object",
+      "properties": {
+        "backend": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BackendRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "doubling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Doubling"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effects": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/EffectSlot"
+          }
+        },
+        "mix": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mix"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "singer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SingerRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voice_mix": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/VoiceMixEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Vibrato": {
+      "description": "Procedural vibrato: `v(t) = D · env(t) · sin(2π ∫ f(τ)dτ + φ)`.",
+      "type": "object",
+      "properties": {
+        "depth_cents": {
+          "description": "Depth D in cents.",
+          "type": "number",
+          "format": "double"
+        },
+        "drift": {
+          "description": "Random rate drift, 0 … 1 (1 ≈ ±5%).",
+          "type": "number",
+          "format": "double"
+        },
+        "fade_in": {
+          "description": "Fade-in length as a fraction of the vibrato, 0 … 1.",
+          "type": "number",
+          "format": "double"
+        },
+        "fade_out": {
+          "description": "Fade-out length as a fraction of the vibrato, 0 … 1.",
+          "type": "number",
+          "format": "double"
+        },
+        "phase": {
+          "description": "Initial phase φ as a fraction of a cycle, 0 … 1.",
+          "type": "number",
+          "format": "double"
+        },
+        "rate_hz": {
+          "description": "Rate in Hz.",
+          "type": "number",
+          "format": "double"
+        },
+        "start": {
+          "description": "Where vibrato starts, as a fraction of the note, 0 … 1.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "depth_cents",
+        "rate_hz",
+        "start",
+        "fade_in",
+        "fade_out",
+        "phase",
+        "drift"
+      ]
+    },
+    "VocalModes": {
+      "description": "Vocal mode weights per dimension (SynthV-style pitch / timbre /\npronunciation modes). Mode names come from the singer.",
+      "type": "object",
+      "properties": {
+        "pitch": {
+          "description": "Pitch-mode weights by mode name.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "default": {}
+        },
+        "pronunciation": {
+          "description": "Pronunciation-mode weights by mode name.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "default": {}
+        },
+        "timbre": {
+          "description": "Timbre-mode weights by mode name.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "VoiceMixEntry": {
+      "description": "A singer blended into a track's timbre.",
+      "type": "object",
+      "properties": {
+        "singer": {
+          "description": "The blended singer.",
+          "$ref": "#/$defs/SingerRef"
+        },
+        "weight": {
+          "description": "Blend weight, 0 … 1.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "singer",
+        "weight"
+      ]
+    }
+  }
+}

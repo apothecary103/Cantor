@@ -1,0 +1,74 @@
+[
+  {
+    "id": "pitch",
+    "name": "Pitch deviation",
+    "unit": "cents",
+    "min": -2400.0,
+    "max": 2400.0,
+    "default": 0.0,
+    "description": "Offset from the base pitch derived from notes, portamento and vibrato."
+  },
+  {
+    "id": "energy",
+    "name": "Energy",
+    "unit": "dB",
+    "min": -96.0,
+    "max": 12.0,
+    "default": 0.0,
+    "description": "Loudness of the voice relative to the model's neutral level."
+  },
+  {
+    "id": "breathiness",
+    "name": "Breathiness",
+    "unit": "dB",
+    "min": -96.0,
+    "max": 12.0,
+    "default": 0.0,
+    "description": "Level of aspiration noise relative to the model's neutral level."
+  },
+  {
+    "id": "voicing",
+    "name": "Voicing",
+    "unit": "dB",
+    "min": -96.0,
+    "max": 12.0,
+    "default": 0.0,
+    "description": "Level of the harmonic (voiced) component."
+  },
+  {
+    "id": "tension",
+    "name": "Tension",
+    "unit": "logit",
+    "min": -10.0,
+    "max": 10.0,
+    "default": 0.0,
+    "description": "Vocal effort; positive is tenser, negative is softer."
+  },
+  {
+    "id": "gender",
+    "name": "Gender",
+    "unit": "semitones",
+    "min": -12.0,
+    "max": 12.0,
+    "default": 0.0,
+    "description": "Formant shift; positive sounds smaller and brighter."
+  },
+  {
+    "id": "velocity",
+    "name": "Velocity",
+    "unit": "ratio",
+    "min": 0.25,
+    "max": 4.0,
+    "default": 1.0,
+    "description": "Consonant speed multiplier."
+  },
+  {
+    "id": "mouth_opening",
+    "name": "Mouth opening",
+    "unit": "ratio",
+    "min": 0.0,
+    "max": 1.0,
+    "default": 0.5,
+    "description": "Jaw and mouth opening, where the backend supports it."
+  }
+]
