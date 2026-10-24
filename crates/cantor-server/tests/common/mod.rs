@@ -4,9 +4,9 @@ use cantor_server::{Engine, EngineConfig};
 use std::path::{Path, PathBuf};
 
 #[allow(dead_code)]
-pub const TWINKLE: &str = include_str!("../../../cantor-cli/tests/fixtures/twinkle.cantor");
+pub(crate) const TWINKLE: &str = include_str!("../../../cantor-cli/tests/fixtures/twinkle.cantor");
 
-pub fn engine(name: &str) -> Engine {
+pub(crate) fn engine(name: &str) -> Engine {
     let vb = cantor_fixtures::ensure(&cantor_fixtures::QIXUAN).unwrap();
     cantor_fixtures::ensure(&cantor_fixtures::PC_NSF_HIFIGAN).unwrap();
     let rmvpe = cantor_fixtures::ensure(&cantor_fixtures::RMVPE).unwrap();
@@ -22,7 +22,7 @@ pub fn engine(name: &str) -> Engine {
 }
 
 #[allow(dead_code)]
-pub fn twinkle_file(name: &str) -> PathBuf {
+pub(crate) fn twinkle_file(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-project"));
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("twinkle.cantor");
