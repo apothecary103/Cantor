@@ -417,6 +417,29 @@ impl DiffSinger {
         &self.root
     }
 
+    /// The singer's default language tag.
+    pub fn default_language(&self) -> &str {
+        &self.default_lang
+    }
+
+    /// Languages the acoustic model was trained on.
+    pub fn languages(&self) -> Vec<String> {
+        let mut l: Vec<String> = self.acoustic_vocab.languages.keys().cloned().collect();
+        l.sort();
+        l
+    }
+
+    /// Dictionary phonemes for a lyric (without timing), for descriptions.
+    /// `None` for continuations, rests and unknown lyrics.
+    pub fn phonemes_for(&self, lyric: &str, lang: Option<&str>) -> Option<Vec<String>> {
+        let lang = lang.unwrap_or(&self.default_lang);
+        match parse_lyric(lyric) {
+            Lyric::Syllable(g) => self.dict(lang).ok()?.lookup(&g).map(<[String]>::to_vec),
+            Lyric::Breath => Some(vec!["AP".into()]),
+            Lyric::Rest | Lyric::Continue => None,
+        }
+    }
+
     /// The dictionary for a language: `dsdict-<lang>.yaml`, else `dsdict.yaml`.
     /// Dictionaries are large and live for the process, so they are leaked
     /// once per language.

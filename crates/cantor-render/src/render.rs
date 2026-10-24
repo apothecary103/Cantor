@@ -19,7 +19,7 @@ pub const HEAD_SECS: f64 = 0.5;
 pub const TAIL_SECS: f64 = 0.3;
 
 /// Render quality.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Quality {
     /// Few sampling steps, for editing.
@@ -39,7 +39,7 @@ impl Quality {
 }
 
 /// What happened to a phrase during a render.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
     /// The phrase audio came from the cache.
@@ -51,7 +51,7 @@ pub enum Outcome {
 }
 
 /// One phrase in a render trace.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PhraseTrace {
     /// The track.
     pub track: TrackId,
@@ -66,7 +66,7 @@ pub struct PhraseTrace {
 }
 
 /// What a render did, phrase by phrase.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RenderTrace {
     /// Phrases in render order.
     pub phrases: Vec<PhraseTrace>,
@@ -163,6 +163,17 @@ impl Renderer {
 
     /// Renders every audible track of a project.
     pub fn render(&self, project: &Project, quality: Quality) -> Result<RenderOutput, RenderError> {
+        self.render_range(project, quality, None)
+    }
+
+    /// Renders only the phrases that overlap `range` (all phrases when
+    /// `None`). Audio still starts at time 0.
+    pub fn render_range(
+        &self,
+        project: &Project,
+        quality: Quality,
+        range: Option<cantor_core::TickRange>,
+    ) -> Result<RenderOutput, RenderError> {
         let grid = self.backend.grid();
         let sr = grid.sample_rate;
         let tempo = project.tempo();
@@ -176,7 +187,14 @@ impl Renderer {
                 continue;
             }
             check_track_support(track, self.backend.as_ref(), &mut diagnostics);
-            let phrases = split(project, track, &tempo);
+            let mut phrases = split(project, track, &tempo);
+            if let Some(r) = range {
+                phrases.retain(|p| {
+                    let start = p.notes[0].start;
+                    let end = p.notes.iter().map(|n| n.end).max().unwrap_or(start);
+                    start < r.end && end > r.start
+                });
+            }
             let mut rendered = Vec::with_capacity(phrases.len());
             for phrase in &phrases {
                 let (audio, t0, pt) =
@@ -221,7 +239,7 @@ impl Renderer {
             }
         }
         let analysis = match &self.analyzer {
-            Some(x) => Some(self.analyze(x.as_ref(), &tracks, &samples, sr)?),
+            Some(x) => Some(self.analyze(x.as_ref(), &tempo, &tracks, &samples, sr)?),
             None => None,
         };
         Ok(RenderOutput {
@@ -237,6 +255,7 @@ impl Renderer {
     fn analyze(
         &self,
         extractor: &dyn F0Extractor,
+        tempo: &TempoMap,
         tracks: &[(&Track, Vec<f32>, Vec<Phrase>)],
         mix: &[f32],
         sr: u32,
@@ -302,6 +321,7 @@ impl Renderer {
                 target_cents: target,
                 f0,
                 joins,
+                tempo: tempo.clone(),
             });
         }
         Ok(cantor_analysis::analyze(&inputs, mix, sr))

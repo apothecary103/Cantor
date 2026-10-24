@@ -285,6 +285,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cantor-server"
+version = "0.1.0"
+dependencies = [
+ "cantor-analysis",
+ "cantor-backends",
+ "cantor-core",
+ "cantor-fixtures",
+ "cantor-io",
+ "cantor-render",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cc"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

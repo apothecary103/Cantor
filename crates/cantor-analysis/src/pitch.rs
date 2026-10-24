@@ -74,6 +74,24 @@ fn errors(n: &NoteTarget, target: &[f64], f0: &F0Track) -> (Vec<f64>, usize, usi
     (errs, voiced, frames.len())
 }
 
+/// Signed error (seconds, cents) every second steady voiced frame of a
+/// sung note, excluding octave errors.
+pub fn contour(n: &NoteTarget, target: &[f64], f0: &F0Track) -> Vec<(f64, f64)> {
+    if !n.sung {
+        return Vec::new();
+    }
+    steady_frames(n, f0)
+        .into_iter()
+        .step_by(2)
+        .filter(|&i| f0.voiced[i] && f0.hz[i] > 0.0 && i < target.len())
+        .map(|i| {
+            let e = hz_to_cents(f64::from(f0.hz[i])) - target[i];
+            (f0.t0 + i as f64 * f0.hop_secs, e)
+        })
+        .filter(|(_, e)| e.abs() <= OCTAVE_ERROR_CENTS)
+        .collect()
+}
+
 /// Pitch figures for one note.
 pub fn note_pitch(n: &NoteTarget, target: &[f64], f0: &F0Track) -> NotePitch {
     if !n.sung {

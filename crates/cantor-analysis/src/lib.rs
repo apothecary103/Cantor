@@ -87,6 +87,8 @@ pub struct TrackInput<'a> {
     pub f0: F0Track,
     /// Times where phrase audio was joined.
     pub joins: Vec<f64>,
+    /// The project's tempo, to report positions in ticks too.
+    pub tempo: cantor_core::TempoMap,
 }
 
 /// The full analysis of a render.
@@ -143,6 +145,20 @@ pub struct NoteReport {
     pub voiced_ratio: f64,
     /// Detected vowel onset minus note onset, in milliseconds.
     pub onset_error_ms: Option<f64>,
+    /// Signed pitch error over the note's steady part, every 20 ms: where
+    /// to correct, for agents drawing pitch-curve edits.
+    pub error_contour: Vec<ContourPoint>,
+}
+
+/// One point of a pitch-error contour.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ContourPoint {
+    /// Time in seconds.
+    pub t: f64,
+    /// Position in ticks.
+    pub tick: i64,
+    /// Measured minus intended pitch, cents (sharp is positive).
+    pub cents: f64,
 }
 
 /// Analyzes rendered tracks and the final mix.
@@ -167,6 +183,14 @@ pub fn analyze(tracks: &[TrackInput<'_>], mix_stereo: &[f32], sample_rate: u32) 
                         octave_errors: p.octave_errors,
                         voiced_ratio: p.voiced_ratio,
                         onset_error_ms: timing::onset_error_ms(n, t.samples, t.sample_rate, &t.f0),
+                        error_contour: pitch::contour(n, &t.target_cents, &t.f0)
+                            .into_iter()
+                            .map(|(time, cents)| ContourPoint {
+                                t: time,
+                                tick: t.tempo.sec_to_tick(time),
+                                cents,
+                            })
+                            .collect(),
                     }
                 })
                 .collect();
