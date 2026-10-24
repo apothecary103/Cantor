@@ -1,0 +1,179 @@
+---
+source: crates/cantor-io/tests/import_musicxml.rs
+expression: "serde_json::json!({\n    \"project\": imported.project, \"diagnostics\": imported.diagnostics,\n})"
+---
+{
+  "diagnostics": [
+    {
+      "code": "musicxml.time_sig_default",
+      "message": "the score has no time signature at its start; assuming 4/4",
+      "severity": "info",
+      "target": {
+        "kind": "time_sig_map"
+      }
+    },
+    {
+      "code": "musicxml.lyric_default",
+      "message": "Voice: the part has no lyrics; its 4 notes sing \"la\"",
+      "severity": "info",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "musicxml.tempo_default",
+      "message": "the score has no tempo at its start; using 120 BPM",
+      "severity": "info",
+      "target": {
+        "kind": "tempo_map"
+      }
+    },
+    {
+      "code": "musicxml.repeats",
+      "message": "1 repeat signs, endings and jumps (the music is imported as written, not unfolded) were not imported",
+      "severity": "warning"
+    }
+  ],
+  "project": {
+    "key_map": [
+      {
+        "scale": "minor",
+        "tick": 0,
+        "tonic": 0
+      }
+    ],
+    "meta": {
+      "artist": "",
+      "comment": "",
+      "title": "Minimal"
+    },
+    "seeds": {},
+    "takes": {},
+    "tempo_map": [
+      {
+        "bpm": 120.0,
+        "tick": 0
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "denominator": 4,
+        "numerator": 4
+      }
+    ],
+    "tracks": [
+      {
+        "backend": "",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 1,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Voice",
+        "parts": [
+          {
+            "id": 2,
+            "length": 15360,
+            "name": "Voice",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 3,
+                "length": 3840,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6000.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 4,
+                "length": 1920,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6300.0,
+                "start": 3840
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 5,
+                "length": 1920,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6700.0,
+                "start": 5760
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 6,
+                "length": 7680,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 7680
+              }
+            ],
+            "start": 0
+          }
+        ],
+        "singer": {
+          "id": ""
+        },
+        "voice_mix": []
+      }
+    ]
+  }
+}
