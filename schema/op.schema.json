@@ -226,6 +226,131 @@
       ]
     },
     {
+      "description": "Adds or replaces a named section.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "description": "First tick after the section.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "description": "Unique name, such as \"chorus\".",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "set_section"
+        },
+        "start": {
+          "description": "First tick.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "op",
+        "name",
+        "start",
+        "end"
+      ]
+    },
+    {
+      "description": "Removes a section.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The section's name.",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "remove_section"
+        }
+      },
+      "required": [
+        "op",
+        "name"
+      ]
+    },
+    {
+      "description": "Generates new takes for every phrase of a track that overlaps a\nrange, and selects the first new take of each. Takes re-roll the\nchosen dimensions with new seeds; earlier takes are kept.",
+      "type": "object",
+      "properties": {
+        "dims": {
+          "description": "Dimensions to vary.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetakeDim"
+          }
+        },
+        "n_variants": {
+          "description": "Takes per phrase, 1..=16.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "retake"
+        },
+        "range": {
+          "description": "Phrases overlapping this range are retaken.",
+          "$ref": "#/$defs/TickRange"
+        },
+        "seed": {
+          "description": "Base seed; `None` derives one from the phrase and lane.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "track": {
+          "description": "The track.",
+          "$ref": "#/$defs/TrackId"
+        }
+      },
+      "required": [
+        "op",
+        "track",
+        "range",
+        "dims",
+        "n_variants"
+      ]
+    },
+    {
+      "description": "Replaces a phrase's whole take lane, or removes it with `None`.\nUndo uses this to restore takes exactly.",
+      "type": "object",
+      "properties": {
+        "lane": {
+          "description": "The lane; `None` removes it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TakeLane"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "op": {
+          "type": "string",
+          "const": "restore_take_lane"
+        },
+        "phrase": {
+          "description": "The phrase.",
+          "$ref": "#/$defs/PhraseId"
+        }
+      },
+      "required": [
+        "op",
+        "phrase"
+      ]
+    },
+    {
       "description": "Chooses which take of a phrase plays.",
       "type": "object",
       "properties": {
@@ -1316,6 +1441,16 @@
       },
       "additionalProperties": false
     },
+    "RetakeDim": {
+      "description": "A dimension a retake can vary.",
+      "type": "string",
+      "enum": [
+        "pitch",
+        "timing",
+        "timbre",
+        "expression"
+      ]
+    },
     "Scale": {
       "description": "A scale or mode for key signatures.",
       "type": "string",
@@ -1351,11 +1486,73 @@
         "id"
       ]
     },
+    "Take": {
+      "description": "One retake of a phrase.",
+      "type": "object",
+      "properties": {
+        "dims": {
+          "description": "Which dimensions were re-generated.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetakeDim"
+          }
+        },
+        "id": {
+          "description": "Unique within the lane.",
+          "$ref": "#/$defs/TakeId"
+        },
+        "label": {
+          "description": "Display label.",
+          "type": "string",
+          "default": ""
+        },
+        "seed": {
+          "description": "Seed used to generate the take.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "seed",
+        "dims"
+      ]
+    },
     "TakeId": {
       "description": "Identifies a take within a phrase's take lane.",
       "type": "integer",
       "format": "uint64",
       "minimum": 0
+    },
+    "TakeLane": {
+      "description": "All takes of one phrase.",
+      "type": "object",
+      "properties": {
+        "selected": {
+          "description": "The take that plays; `None` = the original.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TakeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "takes": {
+          "description": "Every take, oldest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Take"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "takes"
+      ]
     },
     "TickRange": {
       "description": "A half-open tick range `[start, end)`.",

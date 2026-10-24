@@ -48,6 +48,7 @@ expression: "serde_json::json!({\n    \"project\": imported.project, \"diagnosti
       "comment": "",
       "title": "Minimal"
     },
+    "sections": [],
     "seeds": {},
     "takes": {},
     "tempo_map": [

@@ -100,6 +100,7 @@ pub enum EntityRef {
     Note { id: NoteId },
     Curve { track: TrackId, param: ParamId },
     Phrase { id: PhraseId },
+    Section { name: String },
 }
 
 /// What an applied edit changed.

@@ -6,13 +6,15 @@
 //! byte-identical state even for floating-point edits.
 
 use crate::diag::{Diagnostic, DocDiff, EntityRef};
+use crate::ids::TakeId;
 use crate::ids::{NoteId, PartId, Tick, TrackId};
 use crate::model::{
-    Curve, KeyPoint, LayeredCurve, Note, Project, TempoPoint, TickRange, TimeSigPoint, Track,
-    valid_bpm, valid_time_sig, validate_note, validate_track_settings,
+    Curve, KeyPoint, LayeredCurve, Note, Project, Section, Take, TempoPoint, TickRange,
+    TimeSigPoint, Track, valid_bpm, valid_time_sig, validate_note, validate_track_settings,
 };
 use crate::op::{NoteExprPatch, Op, TrackPatch};
 use crate::params::ParamId;
+use crate::phrase::{mix64, phrase_spans};
 use std::collections::{BTreeMap, BTreeSet};
 
 type Res<T> = Result<T, Diagnostic>;
@@ -214,6 +216,147 @@ pub(crate) fn apply(
             Ok(Op::SetSeed {
                 phrase: *phrase,
                 seed: old,
+            })
+        }
+        Op::SetSection { name, start, end } => {
+            let target = Some(EntityRef::Section { name: name.clone() });
+            if name.is_empty() || *start < 0 || end <= start {
+                return Err(Diagnostic::error(
+                    "section.invalid",
+                    format!("section `{name}` needs a name and 0 ≤ start < end"),
+                    target,
+                ));
+            }
+            let new = Section {
+                name: name.clone(),
+                start: *start,
+                end: *end,
+            };
+            let old = p
+                .sections
+                .iter()
+                .position(|s| &s.name == name)
+                .map(|i| p.sections.remove(i));
+            let at = p
+                .sections
+                .partition_point(|s| (s.start, &s.name) < (new.start, &new.name));
+            p.sections.insert(at, new);
+            match old {
+                Some(o) => {
+                    diff.modify(EntityRef::Section { name: name.clone() });
+                    Ok(Op::SetSection {
+                        name: o.name,
+                        start: o.start,
+                        end: o.end,
+                    })
+                }
+                None => {
+                    diff.add(EntityRef::Section { name: name.clone() });
+                    Ok(Op::RemoveSection { name: name.clone() })
+                }
+            }
+        }
+        Op::RemoveSection { name } => {
+            let i = p
+                .sections
+                .iter()
+                .position(|s| &s.name == name)
+                .ok_or_else(|| {
+                    Diagnostic::error(
+                        "section.not_found",
+                        format!("no section named `{name}`"),
+                        Some(EntityRef::Section { name: name.clone() }),
+                    )
+                })?;
+            let o = p.sections.remove(i);
+            diff.remove(EntityRef::Section { name: name.clone() });
+            Ok(Op::SetSection {
+                name: o.name,
+                start: o.start,
+                end: o.end,
+            })
+        }
+        Op::Retake {
+            track,
+            range,
+            dims,
+            n_variants,
+            seed,
+        } => {
+            let ti = track_index(p, *track)?;
+            if range.start >= range.end || dims.is_empty() || !(1..=16).contains(n_variants) {
+                return Err(Diagnostic::error(
+                    "retake.invalid",
+                    "a retake needs a non-empty range, at least one dimension and 1..=16 variants",
+                    Some(EntityRef::Track { id: *track }),
+                ));
+            }
+            let spans: Vec<_> = phrase_spans(p, &p.tracks[ti])
+                .into_iter()
+                .filter(|s| s.start < range.end && s.end > range.start)
+                .collect();
+            if spans.is_empty() {
+                return Err(Diagnostic::error(
+                    "retake.no_phrase",
+                    format!(
+                        "no phrase of {track} overlaps {}..{}",
+                        range.start, range.end
+                    ),
+                    Some(EntityRef::Track { id: *track }),
+                ));
+            }
+            let mut dims = dims.clone();
+            dims.sort_by_key(|d| *d as u8);
+            dims.dedup();
+            let mut inverses = Vec::with_capacity(spans.len());
+            for span in spans {
+                let old = p.takes.get(&span.id).cloned();
+                let lane = p.takes.entry(span.id).or_default();
+                let first = lane.takes.iter().map(|t| t.id.0 + 1).max().unwrap_or(1);
+                let base =
+                    seed.unwrap_or_else(|| mix64(span.id.0 ^ mix64(lane.takes.len() as u64)));
+                for k in 0..u64::from(*n_variants) {
+                    let id = TakeId(first + k);
+                    lane.takes.push(Take {
+                        id,
+                        seed: mix64(base ^ mix64(span.id.0).wrapping_add(k)),
+                        dims: dims.clone(),
+                        label: format!("Take {}", id.0),
+                    });
+                }
+                lane.selected = Some(TakeId(first));
+                diff.modify(EntityRef::Phrase { id: span.id });
+                inverses.push(Op::RestoreTakeLane {
+                    phrase: span.id,
+                    lane: old,
+                });
+            }
+            Ok(batch_or_single(op.label(), inverses))
+        }
+        Op::RestoreTakeLane { phrase, lane } => {
+            if let Some(l) = lane {
+                let mut ids: Vec<_> = l.takes.iter().map(|t| t.id).collect();
+                ids.sort();
+                ids.dedup();
+                let selected_ok = l.selected.is_none_or(|s| l.takes.iter().any(|t| t.id == s));
+                if ids.len() != l.takes.len() || !selected_ok {
+                    return Err(Diagnostic::error(
+                        "take.invalid",
+                        format!(
+                            "the take lane for {phrase} has duplicate ids or selects a missing take"
+                        ),
+                        Some(EntityRef::Phrase { id: *phrase }),
+                    ));
+                }
+            }
+            let old = match lane {
+                Some(l) => p.takes.insert(*phrase, l.clone()),
+                None => p.takes.remove(phrase),
+            };
+            diff.modify(EntityRef::Phrase { id: *phrase });
+            Ok(Op::RestoreTakeLane {
+                phrase: *phrase,
+                lane: old,
             })
         }
         Op::SelectTake { phrase, take } => {

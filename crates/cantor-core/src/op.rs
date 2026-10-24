@@ -7,8 +7,8 @@
 use crate::ids::{NoteId, PartId, PhraseId, TakeId, Tick, TrackId};
 use crate::model::{
     BackendRef, Doubling, EffectSlot, Envelope, Interp, LayeredCurve, Meta, Mix, Note, Part,
-    PhonemeOverride, Portamento, Scale, SingerRef, TickRange, Track, Vibrato, VocalModes,
-    VoiceMixEntry,
+    PhonemeOverride, Portamento, RetakeDim, Scale, SingerRef, TakeLane, TickRange, Track, Vibrato,
+    VocalModes, VoiceMixEntry,
 };
 use crate::params::ParamId;
 use schemars::JsonSchema;
@@ -78,6 +78,44 @@ pub enum Op {
         phrase: PhraseId,
         /// The seed; `None` removes it.
         seed: Option<u64>,
+    },
+    /// Adds or replaces a named section.
+    SetSection {
+        /// Unique name, such as "chorus".
+        name: String,
+        /// First tick.
+        start: Tick,
+        /// First tick after the section.
+        end: Tick,
+    },
+    /// Removes a section.
+    RemoveSection {
+        /// The section's name.
+        name: String,
+    },
+    /// Generates new takes for every phrase of a track that overlaps a
+    /// range, and selects the first new take of each. Takes re-roll the
+    /// chosen dimensions with new seeds; earlier takes are kept.
+    Retake {
+        /// The track.
+        track: TrackId,
+        /// Phrases overlapping this range are retaken.
+        range: TickRange,
+        /// Dimensions to vary.
+        dims: Vec<RetakeDim>,
+        /// Takes per phrase, 1..=16.
+        n_variants: u8,
+        /// Base seed; `None` derives one from the phrase and lane.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seed: Option<u64>,
+    },
+    /// Replaces a phrase's whole take lane, or removes it with `None`.
+    /// Undo uses this to restore takes exactly.
+    RestoreTakeLane {
+        /// The phrase.
+        phrase: PhraseId,
+        /// The lane; `None` removes it.
+        lane: Option<TakeLane>,
     },
     /// Chooses which take of a phrase plays.
     SelectTake {
@@ -308,6 +346,10 @@ impl Op {
             Op::SetKey { .. } => "Set key",
             Op::RemoveKey { .. } => "Remove key",
             Op::SetSeed { .. } => "Set seed",
+            Op::SetSection { .. } => "Set section",
+            Op::RemoveSection { .. } => "Remove section",
+            Op::Retake { .. } => "Retake",
+            Op::RestoreTakeLane { .. } => "Restore takes",
             Op::SelectTake { .. } => "Select take",
             Op::AddTrack { .. } => "Add track",
             Op::RemoveTrack { .. } => "Remove track",

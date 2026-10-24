@@ -2,11 +2,12 @@
 
 use crate::key::KeyBuilder;
 use cantor_core::{
-    LangTag, NoteExpr, NoteId, PhonemeOverride, PhraseId, Project, TempoMap, Tick, Track, TrackId,
+    LangTag, NoteExpr, NoteId, PhonemeOverride, PhraseId, Project, RetakeDim, TempoMap, Tick,
+    Track, TrackId, phrase_spans,
 };
+use std::collections::HashMap;
 
-/// Rests at least this long split phrases.
-pub const MIN_REST_SECS: f64 = 0.2;
+pub use cantor_core::phrase::MIN_REST_SECS;
 
 /// A note placed in absolute time.
 #[derive(Clone, Debug, PartialEq)]
@@ -43,9 +44,24 @@ pub struct Phrase {
     pub track: TrackId,
     /// Notes in time order.
     pub notes: Vec<PhraseNote>,
-    /// Diffusion seed: the project's stored seed for this phrase, or one
-    /// derived from the track and phrase ids.
+    /// The phrase's seed: the project's stored seed, or one derived from
+    /// the track and phrase ids.
     pub seed: u64,
+    /// Noise seeds per model stage, after applying the selected take.
+    pub seeds: StageSeeds,
+    /// Retake dimensions the selected take asks for that no stage can vary.
+    pub unsupported_dims: Vec<RetakeDim>,
+}
+
+/// Noise seeds for each stochastic stage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StageSeeds {
+    /// Pitch model (retake dimension: pitch).
+    pub pitch: u64,
+    /// Variance model (retake dimension: expression).
+    pub variance: u64,
+    /// Acoustic model (retake dimension: timbre).
+    pub acoustic: u64,
 }
 
 impl Phrase {
@@ -63,14 +79,14 @@ impl Phrase {
     }
 }
 
-/// Splits one track into phrases.
+/// Splits one track into phrases (see [`cantor_core::phrase_spans`]).
 pub fn split(project: &Project, track: &Track, tempo: &TempoMap) -> Vec<Phrase> {
-    let mut notes: Vec<PhraseNote> = track
-        .parts
-        .iter()
-        .flat_map(|part| {
-            part.notes.iter().map(move |n| {
-                let (start, end) = (part.start + n.start, part.start + n.start + n.length);
+    let mut by_id: HashMap<NoteId, PhraseNote> = HashMap::new();
+    for part in &track.parts {
+        for n in &part.notes {
+            let (start, end) = (part.start + n.start, part.start + n.start + n.length);
+            by_id.insert(
+                n.id,
                 PhraseNote {
                     id: n.id,
                     start,
@@ -82,40 +98,47 @@ pub fn split(project: &Project, track: &Track, tempo: &TempoMap) -> Vec<Phrase> 
                     lang: n.lang.clone(),
                     phonemes: n.phonemes.clone(),
                     expr: n.expr.clone(),
-                }
-            })
-        })
-        .collect();
-    notes.sort_by_key(|n| (n.start, n.id));
-
-    let mut phrases: Vec<Vec<PhraseNote>> = Vec::new();
-    let mut last_end = f64::MIN;
-    for n in notes {
-        match phrases.last_mut() {
-            Some(cur) if n.start_sec - last_end < MIN_REST_SECS => {
-                last_end = last_end.max(n.end_sec);
-                cur.push(n);
-            }
-            _ => {
-                last_end = n.end_sec;
-                phrases.push(vec![n]);
-            }
+                },
+            );
         }
     }
-    phrases
+    phrase_spans(project, track)
         .into_iter()
-        .map(|notes| {
-            let id = PhraseId(notes[0].id.0);
+        .map(|span| {
+            let id = span.id;
             let seed = project
                 .seeds
                 .get(&id)
                 .copied()
                 .unwrap_or_else(|| default_seed(track.id, id));
+            let take = project.takes.get(&id).and_then(|lane| {
+                lane.selected
+                    .and_then(|s| lane.takes.iter().find(|t| t.id == s))
+            });
+            let pick = |dim: RetakeDim| match take {
+                Some(t) if t.dims.contains(&dim) => t.seed,
+                _ => seed,
+            };
+            let unsupported_dims = take
+                .map(|t| {
+                    t.dims
+                        .iter()
+                        .copied()
+                        .filter(|d| *d == RetakeDim::Timing)
+                        .collect()
+                })
+                .unwrap_or_default();
             Phrase {
                 id,
                 track: track.id,
-                notes,
+                notes: span.notes.iter().map(|n| by_id[n].clone()).collect(),
                 seed,
+                seeds: StageSeeds {
+                    pitch: pick(RetakeDim::Pitch),
+                    variance: pick(RetakeDim::Expression),
+                    acoustic: pick(RetakeDim::Timbre),
+                },
+                unsupported_dims,
             }
         })
         .collect()

@@ -239,7 +239,7 @@ impl Renderer {
                         frames,
                         base_pitch: &base,
                         steps,
-                        seed: phrase.seed,
+                        seeds: phrase.seeds,
                     })
                     .map_err(backend_err)?;
                 let json = serde_json::to_vec(&p).expect("predictions serialize");
@@ -248,6 +248,17 @@ impl Renderer {
             }
         };
         diagnostics.extend(pred.diagnostics.iter().cloned());
+        if !phrase.unsupported_dims.is_empty() {
+            diagnostics.push(Diagnostic::warning(
+                "render.retake_dim_unsupported",
+                format!(
+                    "{} cannot vary {:?}; the take's other dimensions are applied",
+                    b.id(),
+                    phrase.unsupported_dims
+                ),
+                Some(EntityRef::Phrase { id: phrase.id }),
+            ));
+        }
 
         // Frame times → ticks, for sampling the track's curves.
         let ticks: Vec<i64> = (0..frames)
@@ -297,7 +308,8 @@ impl Renderer {
 
         let mut mk = KeyBuilder::new("mel");
         mk.key("prediction", &pred_key)
-            .u64("steps", u64::from(steps));
+            .u64("steps", u64::from(steps))
+            .u64("acoustic_seed", phrase.seeds.acoustic);
         for (param, v) in &variance {
             mk.f32s(param, v);
         }
@@ -326,7 +338,7 @@ impl Renderer {
                         f0_ref_hz: &f0_ref_hz,
                         variance: &variance,
                         steps,
-                        seed: phrase.seed,
+                        seed: phrase.seeds.acoustic,
                     })
                     .map_err(backend_err)?;
                 self.cache.put_f32(Kind::Mel, &mel_key, &mel)?;
@@ -347,7 +359,9 @@ fn prediction_key(b: &dyn Backend, phrase: &Phrase, t0: f64, frames: usize, step
         .u64("t0", t0.to_bits())
         .u64("frames", frames as u64)
         .u64("steps", u64::from(steps))
-        .u64("seed", phrase.seed);
+        .u64("seed", phrase.seed)
+        .u64("pitch_seed", phrase.seeds.pitch)
+        .u64("variance_seed", phrase.seeds.variance);
     for n in &phrase.notes {
         k.u64("start", n.start_sec.to_bits())
             .u64("end", n.end_sec.to_bits())

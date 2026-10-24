@@ -96,6 +96,7 @@ expression: "serde_json::json!({\n    \"project\": imported.project, \"diagnosti
       "comment": "Movement: I. Allegretto\nArranger: Cy Arranger\nRights: Public domain & free",
       "title": "Little Duet"
     },
+    "sections": [],
     "seeds": {},
     "takes": {},
     "tempo_map": [

@@ -15,6 +15,7 @@ pub mod ids;
 pub mod model;
 pub mod op;
 pub mod params;
+pub mod phrase;
 pub mod schema;
 pub mod time;
 
@@ -25,4 +26,5 @@ pub use ids::{NoteId, PPQ, PartId, PhraseId, Revision, TakeId, Tick, TrackId};
 pub use model::*;
 pub use op::*;
 pub use params::{ParamDescriptor, ParamId};
+pub use phrase::{PhraseSpan, phrase_spans};
 pub use time::{TempoMap, TimeSigMap};

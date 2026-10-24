@@ -39,8 +39,14 @@ enum Seed {
     SetVocalModes(usize, f64),
     SetCurve(usize, usize, i64, i64, Vec<(i64, f64)>, usize),
     ClearCurve(usize, usize),
+    SetSection(usize, i64, i64),
+    RemoveSection(usize),
+    Retake(usize, i64, i64, u8, u8, Option<u64>),
+    ClearTakes(usize),
     Batch(Vec<Seed>),
 }
+
+const SECTIONS: &[&str] = &["verse", "chorus", "bridge"];
 
 const PARAMS: &[&str] = &["pitch", "breathiness", "tension", "gender", "not_a_param"];
 const SCALES: &[Scale] = &[Scale::Major, Scale::Minor, Scale::Dorian, Scale::Chromatic];
@@ -128,6 +134,19 @@ fn leaf() -> impl Strategy<Value = Seed> {
         )
             .prop_map(|(t, p, s, l, pts, i)| Seed::SetCurve(t, p, s, l, pts, i)),
         (idx(), 0usize..PARAMS.len()).prop_map(|(t, p)| Seed::ClearCurve(t, p)),
+        (0usize..4, -100i64..20_000, -10i64..10_000)
+            .prop_map(|(n, s, l)| Seed::SetSection(n, s, l)),
+        (0usize..4).prop_map(Seed::RemoveSection),
+        (
+            idx(),
+            -100i64..6_000,
+            -10i64..12_000,
+            0u8..16,
+            0u8..17,
+            prop::option::of(any::<u64>())
+        )
+            .prop_map(|(t, s, l, d, n, seed)| Seed::Retake(t, s, l, d, n, seed)),
+        idx().prop_map(Seed::ClearTakes),
     ]
 }
 
@@ -423,6 +442,41 @@ fn resolve(seed: &Seed, p: &Project, next: &mut u64) -> Op {
             param: ParamId::new(PARAMS[*param]),
             curve: None,
         },
+        Seed::SetSection(n, start, len) => Op::SetSection {
+            name: SECTIONS.get(*n).map_or("", |s| s).to_owned(),
+            start: *start,
+            end: start + len,
+        },
+        Seed::RemoveSection(n) => Op::RemoveSection {
+            name: SECTIONS.get(*n).map_or("coda", |s| s).to_owned(),
+        },
+        Seed::Retake(i, start, len, mask, n, seed) => Op::Retake {
+            track: track(*i),
+            range: TickRange {
+                start: *start,
+                end: start + len,
+            },
+            dims: [
+                RetakeDim::Pitch,
+                RetakeDim::Timing,
+                RetakeDim::Timbre,
+                RetakeDim::Expression,
+            ]
+            .into_iter()
+            .enumerate()
+            .filter(|(k, _)| mask & (1 << k) != 0)
+            .map(|(_, d)| d)
+            .collect(),
+            n_variants: *n,
+            seed: *seed,
+        },
+        Seed::ClearTakes(i) => {
+            let phrases: Vec<PhraseId> = p.takes.keys().copied().collect();
+            Op::RestoreTakeLane {
+                phrase: pick(&phrases, *i, PhraseId(u64::MAX)),
+                lane: None,
+            }
+        }
         Seed::Batch(seeds) => {
             // Resolve against a scratch copy so later ops in the batch can
             // address entities created by earlier ones.
@@ -456,6 +510,8 @@ fn initial_project(seeds: &[Seed]) -> (Project, u64) {
         Seed::SetTimeSig(4, 3, 4),
         Seed::SetTempo(7680, 92.5),
         Seed::SetKey(0, 9, 1),
+        Seed::SetSection(0, 0, 3840),
+        Seed::SetSection(1, 3840, 7680),
     ];
     for s in base.iter().chain(seeds) {
         let op = resolve(s, doc.project(), &mut next);
@@ -741,6 +797,10 @@ fn generator_reaches_every_op_kind() {
         "set_vocal_modes",
         "set_curve",
         "restore_curve",
+        "set_section",
+        "remove_section",
+        "retake",
+        "restore_take_lane",
     ];
     let rare: Vec<_> = expected
         .iter()

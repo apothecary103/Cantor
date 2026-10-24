@@ -39,6 +39,7 @@ expression: snapshot_value(&imported)
       "comment": "",
       "title": "Legacy Waltz"
     },
+    "sections": [],
     "seeds": {},
     "takes": {},
     "tempo_map": [

@@ -21,6 +21,14 @@
         "title": ""
       }
     },
+    "sections": {
+      "description": "Named song sections (verse, chorus, ...), sorted by start.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Section"
+      }
+    },
     "seeds": {
       "description": "Diffusion noise seed per phrase.",
       "type": "object",
@@ -620,6 +628,32 @@
         "mixolydian",
         "locrian",
         "chromatic"
+      ]
+    },
+    "Section": {
+      "description": "A named region of the song, such as a verse or chorus.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "description": "First tick after the section.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "description": "Unique name.",
+          "type": "string"
+        },
+        "start": {
+          "description": "First tick.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "start",
+        "end"
       ]
     },
     "SingerRef": {

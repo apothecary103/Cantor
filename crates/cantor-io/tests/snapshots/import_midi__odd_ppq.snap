@@ -30,6 +30,7 @@ expression: "snapshot_value(\"odd_ppq.mid\")"
       "comment": "",
       "title": ""
     },
+    "sections": [],
     "seeds": {},
     "takes": {},
     "tempo_map": [

@@ -35,6 +35,21 @@ pub struct Project {
     /// Retakes per phrase. Takes are kept, not discarded.
     #[serde(default)]
     pub takes: BTreeMap<PhraseId, TakeLane>,
+    /// Named song sections (verse, chorus, ...), sorted by start.
+    #[serde(default)]
+    pub sections: Vec<Section>,
+}
+
+/// A named region of the song, such as a verse or chorus.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Section {
+    /// Unique name.
+    pub name: String,
+    /// First tick.
+    pub start: Tick,
+    /// First tick after the section.
+    pub end: Tick,
 }
 
 /// Title and credits.
@@ -520,6 +535,7 @@ impl Project {
             tracks: Vec::new(),
             seeds: BTreeMap::new(),
             takes: BTreeMap::new(),
+            sections: Vec::new(),
         }
     }
 
@@ -531,6 +547,11 @@ impl Project {
     /// Bar ↔ tick conversion for this project's time-signature map.
     pub fn meter(&self) -> TimeSigMap {
         TimeSigMap::new(&self.time_sig_map)
+    }
+
+    /// Finds a section by name.
+    pub fn section(&self, name: &str) -> Option<&Section> {
+        self.sections.iter().find(|s| s.name == name)
     }
 
     /// Finds a track by id.
@@ -590,6 +611,8 @@ impl Project {
         self.tempo_map.sort_by_key(|p| p.tick);
         self.time_sig_map.sort_by_key(|p| p.bar);
         self.key_map.sort_by_key(|p| p.tick);
+        self.sections
+            .sort_by(|a, b| (a.start, &a.name).cmp(&(b.start, &b.name)));
         for track in &mut self.tracks {
             track.parts.sort_by_key(|p| (p.start, p.id));
             for part in &mut track.parts {
@@ -685,6 +708,27 @@ impl Project {
             }
         }
 
+        let mut names = BTreeSet::new();
+        for sec in &self.sections {
+            if !names.insert(sec.name.as_str()) || sec.start < 0 || sec.end <= sec.start {
+                err(
+                    "section.invalid",
+                    format!(
+                        "section `{}` is duplicated or has an empty or negative range",
+                        sec.name
+                    ),
+                    None,
+                );
+            }
+        }
+        if !sorted_by(self.sections.iter().map(|s| (s.start, s.name.clone()))) {
+            err(
+                "section.unsorted",
+                "sections must be sorted by start".into(),
+                None,
+            );
+        }
+
         let mut track_ids = BTreeSet::new();
         let mut part_ids = BTreeSet::new();
         let mut note_ids = BTreeSet::new();
@@ -775,6 +819,14 @@ impl Project {
             }
         }
         for (phrase, lane) in &self.takes {
+            let ids: BTreeSet<_> = lane.takes.iter().map(|t| t.id).collect();
+            if ids.len() != lane.takes.len() {
+                err(
+                    "take.duplicate_id",
+                    format!("{phrase} has duplicate take ids"),
+                    Some(EntityRef::Phrase { id: *phrase }),
+                );
+            }
             if let Some(sel) = lane.selected
                 && !lane.takes.iter().any(|t| t.id == sel)
             {

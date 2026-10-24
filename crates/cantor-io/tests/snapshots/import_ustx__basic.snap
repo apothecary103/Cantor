@@ -136,6 +136,7 @@ expression: snapshot_value(&imported)
       "comment": "hand-written fixture for the Cantor USTX importer",
       "title": "Import Test Song"
     },
+    "sections": [],
     "seeds": {},
     "takes": {},
     "tempo_map": [

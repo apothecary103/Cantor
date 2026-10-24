@@ -246,3 +246,32 @@ fn unsupported_curves_are_reported() {
             .any(|d| d.code == "render.param_unsupported")
     );
 }
+
+#[test]
+fn retakes_change_only_their_phrase_and_switch_back_exactly() {
+    let p = project();
+    let (r, _) = renderer(&tempdir("retake"));
+    let original = r.render(&p, Quality::Preview).unwrap();
+    let mut doc = Document::new(p);
+    let res = doc.apply(Op::Retake {
+        track: TrackId(1),
+        range: TickRange {
+            start: 4 * 1920,
+            end: 5 * 1920,
+        },
+        dims: vec![RetakeDim::Timbre],
+        n_variants: 2,
+        seed: Some(5),
+    });
+    assert!(res.applied, "{:?}", res.diagnostics);
+    let retaken = r.render(doc.project(), Quality::Preview).unwrap();
+    let outcomes: Vec<_> = retaken.trace.phrases.iter().map(|t| t.outcome).collect();
+    assert_eq!(outcomes, [Outcome::CacheHit, Outcome::Full]);
+    assert_ne!(retaken.audio_hash, original.audio_hash);
+
+    let phrase = retaken.trace.phrases[1].phrase;
+    doc.apply(Op::SelectTake { phrase, take: None });
+    let back = r.render(doc.project(), Quality::Preview).unwrap();
+    assert_eq!(back.audio_hash, original.audio_hash);
+    assert_eq!(back.trace.cache_hit_rate(), 1.0);
+}

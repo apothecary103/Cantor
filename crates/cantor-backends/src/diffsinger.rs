@@ -787,7 +787,7 @@ impl Backend for DiffSinger {
                 }
                 let out = stage.predictor.run(
                     inputs,
-                    input.seed ^ SEED_PITCH,
+                    input.seeds.pitch ^ SEED_PITCH,
                     VARIANCE_NOISE_PER_FRAME * frames,
                     &["pitch_pred"],
                 )?;
@@ -824,7 +824,7 @@ impl Backend for DiffSinger {
             let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
             let out = vs.stage.predictor.run(
                 inputs,
-                input.seed ^ SEED_VARIANCE,
+                input.seeds.variance ^ SEED_VARIANCE,
                 VARIANCE_NOISE_PER_FRAME * frames,
                 &name_refs,
             )?;

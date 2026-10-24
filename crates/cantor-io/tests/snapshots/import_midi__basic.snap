@@ -135,6 +135,7 @@ expression: "snapshot_value(\"basic.mid\")"
       "comment": "",
       "title": "Basic Song"
     },
+    "sections": [],
     "seeds": {},
     "takes": {},
     "tempo_map": [

@@ -1,6 +1,6 @@
 //! The interface between the renderer and a synthesis backend.
 
-use crate::phrase::Phrase;
+use crate::phrase::{Phrase, StageSeeds};
 use cantor_core::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -36,8 +36,8 @@ pub struct PhraseInput<'a> {
     pub base_pitch: &'a [f64],
     /// Diffusion sampling steps.
     pub steps: u32,
-    /// Seed for the phrase.
-    pub seed: u64,
+    /// Noise seeds per stage.
+    pub seeds: StageSeeds,
 }
 
 /// One placed phoneme.
@@ -74,7 +74,7 @@ pub struct AcousticInput<'a> {
     pub variance: &'a BTreeMap<String, Vec<f32>>,
     /// Sampling steps.
     pub steps: u32,
-    /// Seed.
+    /// Acoustic-model noise seed.
     pub seed: u64,
 }
 

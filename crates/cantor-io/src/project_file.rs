@@ -16,13 +16,28 @@ use std::path::Path;
 pub const FORMAT: &str = "cantor-project";
 
 /// The file-format version this build writes.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 /// Migrations from older file versions, in order. Each one upgrades the
-/// envelope from version `from` to `from + 1`. Version 1 is the first
-/// release, so the list is empty; a format change adds an entry here and
-/// bumps [`CURRENT_VERSION`].
-pub const MIGRATIONS: &[Migration] = &[];
+/// envelope from version `from` to `from + 1`. A format change adds an
+/// entry here and bumps [`CURRENT_VERSION`].
+pub const MIGRATIONS: &[Migration] = &[Migration {
+    from: 1,
+    description: "add song sections",
+    apply: v1_to_v2,
+}];
+
+/// Version 2 added `project.sections` (named song regions).
+fn v1_to_v2(v: &mut Value) -> Result<(), String> {
+    let project = v
+        .get_mut("project")
+        .and_then(Value::as_object_mut)
+        .ok_or("missing project")?;
+    project
+        .entry("sections")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    Ok(())
+}
 
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
@@ -315,6 +330,19 @@ mod tests {
         save(&path, &sample(), Compression::None).unwrap();
         assert_eq!(load(&path).unwrap().project, sample());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A real version-1 file (before sections) loads and reports the
+    /// migration.
+    #[test]
+    fn migrates_version_1_files() {
+        let mut v: Value = serde_json::from_slice(&to_bytes(&sample(), Compression::None)).unwrap();
+        v["version"] = Value::from(1);
+        v["project"].as_object_mut().unwrap().remove("sections");
+        let loaded = from_bytes(&serde_json::to_vec(&v).unwrap()).unwrap();
+        assert_eq!(loaded.migrated_from, Some(1));
+        assert_eq!(loaded.project, sample());
+        assert_eq!(loaded.diagnostics[0].code, "file.migrated");
     }
 
     #[test]
