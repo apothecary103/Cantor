@@ -17,6 +17,7 @@ cantor-render = { path = "crates/cantor-render" }
 cantor-backends = { path = "crates/cantor-backends" }
 cantor-phon = { path = "crates/cantor-phon" }
 cantor-fixtures = { path = "crates/cantor-fixtures" }
+cantor-analysis = { path = "crates/cantor-analysis" }
 
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
@@ -28,6 +29,8 @@ serde-saphyr = "=2.0.0"
 zstd = "=0.14.3"
 blake3 = "=1.8.7"
 sha2 = "=0.11.1"
+ebur128 = "=0.1.10"
+realfft = "=3.5.0"
 hound = "=3.5.1"
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "tracing"] }
 clap = { version = "=4.6.7", features = ["derive"] }
