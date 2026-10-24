@@ -27,3 +27,8 @@ Consequences:
   cannot encode as compact unwind; ld falls back to DWARF unwind info and
   prints a line per symbol. Unwinding works (proptest's panic catching relies
   on it), so the workspace allows the `linker_messages` lint.
+- Dependencies build with LLVM even in dev (`[profile.dev.package."*"]`).
+  On x86_64 Linux, Cranelift aborted at runtime on an SSE2 intrinsic
+  (`llvm.x86.sse2.pmulhu.w`) used by a dependency. Workspace crates, where
+  edit-compile cycles happen, keep Cranelift; the assertion checks a
+  workspace crate.

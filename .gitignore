@@ -1,5 +1,5 @@
 # Rust 
-/target/
+/target
 **/*.rs.bk
 # Cargo.lock is committed on purpose (exact pins, reproducible builds).
 
