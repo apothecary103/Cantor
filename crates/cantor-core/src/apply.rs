@@ -425,7 +425,7 @@ pub(crate) fn apply(
             let mut inverses = Vec::with_capacity(ids.len());
             // Remove from the back so earlier indices stay valid.
             let mut order: Vec<_> = locs.into_iter().collect();
-            order.sort_by(|a, b| b.1.cmp(&a.1));
+            order.sort_by_key(|&(_, loc)| std::cmp::Reverse(loc));
             for (id, (ti, pi, ni)) in order {
                 let note = p.tracks[ti].parts[pi].notes.remove(ni);
                 diff.remove(EntityRef::Note { id });

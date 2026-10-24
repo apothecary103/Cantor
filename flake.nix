@@ -50,9 +50,9 @@
 
             buildInputs =
               [ pkgs.onnxruntime ]
-              ++ lib.optionals stdenv.isLinux linuxRuntimeLibs
+              ++ lib.optionals stdenv.hostPlatform.isLinux linuxRuntimeLibs
               # Use the newest apple-sdk_* your nixpkgs provides.
-              ++ lib.optionals stdenv.isDarwin [ pkgs.apple-sdk_15 ];
+              ++ lib.optionals stdenv.hostPlatform.isDarwin [ pkgs.apple-sdk_15 ];
 
             env = {
               # ort uses the `load-dynamic` feature and loads this library.
@@ -62,7 +62,7 @@
             };
 
             shellHook = ''
-              ${lib.optionalString stdenv.isLinux ''
+              ${lib.optionalString stdenv.hostPlatform.isLinux ''
                 export LD_LIBRARY_PATH=${lib.makeLibraryPath linuxRuntimeLibs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
               ''}
               echo "cantor dev shell: $(rustc --version)"
