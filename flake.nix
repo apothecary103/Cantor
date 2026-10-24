@@ -93,6 +93,8 @@
               # Test fixtures are downloaded by checksum and unzipped.
               curl
               unzip
+              # npx runs the MCP conformance suite (`cargo xtask conformance`).
+              nodejs_22
             ];
 
             buildInputs =

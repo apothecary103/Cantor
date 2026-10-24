@@ -1,7 +1,9 @@
 //! `cargo xtask <command>`: Cantor's build, CI and maintenance tasks.
 
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Child, Command, ExitCode, Stdio};
+use std::time::{Duration, Instant};
 
 /// Crates with `unsafe` code or concurrency worth checking under Miri.
 const MIRI_CRATES: &[&str] = &["cantor-core"];
@@ -13,6 +15,14 @@ const TSAN_CRATES: &[&str] = &["cantor-core"];
 /// A dependency-free workspace crate used to observe the codegen backend.
 const CODEGEN_PROBE: &str = "cantor-plugin-sdk";
 
+/// The official MCP conformance suite. 0.1.x does not cover 2026-07-28.
+/// See docs/decisions/0013-mcp-conformance.md.
+const CONFORMANCE_PACKAGE: &str = "@modelcontextprotocol/conformance@0.2.0-alpha.12";
+/// The MCP specification revision whose required scenarios must pass.
+const MCP_REVISION: &str = "2026-07-28";
+const CONFORMANCE_BIN: &str = "cantor-mcp-conformance";
+const CONFORMANCE_PORT: u16 = 8001;
+
 const USAGE: &str = "\
 usage: cargo xtask <command>
 
@@ -22,7 +32,9 @@ commands:
   codegen-check   assert debug builds use Cranelift and release builds use LLVM
   miri            run Miri on crates with unsafe code
   tsan            run ThreadSanitizer on the engine and audio crates
-  app             run the desktop app (arrives in M4)
+  conformance     run the official MCP conformance suite against the fixture server
+                  (needs network for npx; not part of ci)
+  app           run the desktop app (arrives in M4)
   bench           render and UI benchmarks (arrive in M2/M4)";
 
 type Result<T = ()> = std::result::Result<T, String>;
@@ -36,6 +48,7 @@ fn main() -> ExitCode {
         Some("codegen-check") => codegen_check(),
         Some("miri") => miri(),
         Some("tsan") => tsan(),
+        Some("conformance") => conformance(),
         Some("app") => Err("the desktop app arrives in milestone M4".into()),
         Some("bench") => Err("benchmarks arrive with rendering (M2) and the app (M4)".into()),
         Some("-h" | "--help" | "help") => {
@@ -280,4 +293,109 @@ fn tsan() -> Result {
     cmd.env("TSAN_OPTIONS", "halt_on_error=1");
     cmd.env("CARGO_TARGET_DIR", root().join("target").join("tsan"));
     run(&format!("tsan test ({})", TSAN_CRATES.join(", ")), &mut cmd)
+}
+
+/// Builds `bin` of `package` and returns the executable's path, as cargo
+/// reports it (so CARGO_TARGET_DIR and build-dir layouts just work).
+fn build_bin(package: &str, bin: &str) -> Result<PathBuf> {
+    eprintln!("\n==> build {bin}");
+    let out = cargo()
+        .args(["build", "--locked", "-p", package, "--bin", bin])
+        .arg("--message-format=json-render-diagnostics")
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|e| format!("cargo build: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("building {bin} failed ({})", out.status));
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter(|m| m["reason"] == "compiler-artifact" && m["target"]["name"] == bin)
+        .find_map(|m| m["executable"].as_str().map(PathBuf::from))
+        .ok_or_else(|| format!("cargo reported no executable for {bin}"))
+}
+
+/// Kills the child process when dropped, so an early return or panic never
+/// leaves the fixture server holding the port.
+struct KillOnDrop(Child);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Builds and starts the MCP conformance fixture server, runs the official
+/// suite's required scenarios for [`MCP_REVISION`] against it, and stops it.
+fn conformance() -> Result {
+    let exe = build_bin("cantor-mcp", CONFORMANCE_BIN)?;
+    let addr = SocketAddr::from(([127, 0, 0, 1], CONFORMANCE_PORT));
+    if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+        return Err(format!(
+            "{addr} is already in use; stop whatever listens there and retry"
+        ));
+    }
+
+    let log_path = exe.with_extension("log");
+    let log = std::fs::File::create(&log_path).map_err(|e| format!("{log_path:?}: {e}"))?;
+    let log_err = log.try_clone().map_err(|e| e.to_string())?;
+    eprintln!(
+        "\n==> start {CONFORMANCE_BIN} on {addr} (log: {})",
+        log_path.display()
+    );
+    let child = Command::new(&exe)
+        .env("PORT", CONFORMANCE_PORT.to_string())
+        .stdin(Stdio::null())
+        .stdout(log)
+        .stderr(log_err)
+        .spawn()
+        .map_err(|e| format!("starting {}: {e}", exe.display()))?;
+    let mut server = KillOnDrop(child);
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_err() {
+        if let Some(status) = server.0.try_wait().map_err(|e| e.to_string())? {
+            return Err(format!(
+                "{CONFORMANCE_BIN} exited ({status}) before listening; see {}",
+                log_path.display()
+            ));
+        }
+        if Instant::now() > deadline {
+            return Err(format!(
+                "{CONFORMANCE_BIN} did not listen on {addr} within 30 s"
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let url = format!("http://{addr}/mcp");
+    let mut npx = Command::new("npx");
+    npx.current_dir(root()).args([
+        "-y",
+        CONFORMANCE_PACKAGE,
+        "server",
+        "--url",
+        &url,
+        "--requirements",
+        MCP_REVISION,
+    ]);
+    // Keep npx's package cache next to the build, never in ~/.npm.
+    if std::env::var_os("npm_config_cache").is_none() {
+        let target = std::env::var_os("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root().join("target"));
+        npx.env("npm_config_cache", target.join("npm-cache"));
+    }
+    let baseline = root().join("crates/cantor-mcp/conformance/expected-failures.yaml");
+    if baseline.exists() {
+        npx.arg("--expected-failures").arg(&baseline);
+    }
+    let result = run(
+        &format!("MCP conformance suite ({CONFORMANCE_PACKAGE}, {MCP_REVISION})"),
+        &mut npx,
+    );
+    drop(server);
+    result
 }
