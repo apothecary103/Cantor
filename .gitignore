@@ -88,3 +88,4 @@ CLAUDE.local.md
 
 # Agent worktrees
 /.claude/worktrees/
+.envrc.local
