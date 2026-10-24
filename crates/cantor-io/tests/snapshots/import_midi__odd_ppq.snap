@@ -1,0 +1,222 @@
+---
+source: crates/cantor-io/tests/import_midi.rs
+expression: "snapshot_value(\"odd_ppq.mid\")"
+---
+{
+  "diagnostics": [
+    {
+      "code": "midi.tempo_default",
+      "message": "no tempo at the start of the file; using 120 BPM until the first tempo event",
+      "severity": "info",
+      "target": {
+        "kind": "tempo_map"
+      }
+    },
+    {
+      "code": "midi.ticks_rounded",
+      "message": "8 positions did not land on whole ticks when converting from 1000 to 1920 ticks per quarter note and were rounded to the nearest tick",
+      "severity": "warning"
+    },
+    {
+      "code": "midi.ignored.velocity",
+      "message": "ignored 7 note velocities (velocity)",
+      "severity": "info"
+    }
+  ],
+  "project": {
+    "key_map": [],
+    "meta": {
+      "artist": "",
+      "comment": "",
+      "title": ""
+    },
+    "seeds": {},
+    "takes": {},
+    "tempo_map": [
+      {
+        "bpm": 120.0,
+        "tick": 0
+      },
+      {
+        "bpm": 123.99999173333389,
+        "tick": 1920
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "denominator": 8,
+        "numerator": 6
+      }
+    ],
+    "tracks": [
+      {
+        "backend": "",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 1,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Odd",
+        "parts": [
+          {
+            "id": 2,
+            "length": 11520,
+            "name": "Odd",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 3,
+                "length": 639,
+                "lyric": "do",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6000.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 4,
+                "length": 642,
+                "lyric": "re",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6200.0,
+                "start": 639
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 5,
+                "length": 639,
+                "lyric": "mi",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6400.0,
+                "start": 1281
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 6,
+                "length": 960,
+                "lyric": "fa",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6600.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 7,
+                "length": 962,
+                "lyric": "so",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6800.0,
+                "start": 2880
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 8,
+                "length": 1916,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7000.0,
+                "start": 3842
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 9,
+                "length": 1922,
+                "lyric": "ti",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 5758
+              }
+            ],
+            "start": 0
+          }
+        ],
+        "singer": {
+          "id": ""
+        },
+        "voice_mix": []
+      }
+    ]
+  }
+}

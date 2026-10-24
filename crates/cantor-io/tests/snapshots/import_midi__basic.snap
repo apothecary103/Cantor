@@ -1,0 +1,504 @@
+---
+source: crates/cantor-io/tests/import_midi.rs
+expression: "snapshot_value(\"basic.mid\")"
+---
+{
+  "diagnostics": [
+    {
+      "code": "midi.time_sig_moved",
+      "message": "time signature 4/4 at tick 33600 is not on a bar line; moved to the start of bar 7",
+      "severity": "warning",
+      "target": {
+        "kind": "time_sig_map"
+      }
+    },
+    {
+      "code": "midi.lyric_unmatched",
+      "message": "Melody: 1 lyrics have no note starting at their tick and were dropped (first: \"orphan\" at tick 20160)",
+      "severity": "warning",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "midi.note_zero_length",
+      "message": "Harmony: dropped 1 zero-length notes",
+      "severity": "warning",
+      "target": {
+        "id": 13,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "midi.note_unterminated",
+      "message": "Harmony: 1 notes have no note-off; they end at the end of the track",
+      "severity": "warning",
+      "target": {
+        "id": 13,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "midi.note_chord_dropped",
+      "message": "Harmony: dropped 1 notes that start together with a higher note (tracks are monophonic)",
+      "severity": "warning",
+      "target": {
+        "id": 13,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "midi.note_overlap_trimmed",
+      "message": "Harmony: shortened 1 notes to end where the next note starts (tracks are monophonic)",
+      "severity": "warning",
+      "target": {
+        "id": 13,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "midi.text_as_lyrics",
+      "message": "Harmony: no Lyric events; using Text events as lyrics",
+      "severity": "info",
+      "target": {
+        "id": 13,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "midi.drum_notes_skipped",
+      "message": "skipped 2 notes on MIDI channel 10 (drums)",
+      "severity": "warning"
+    },
+    {
+      "code": "midi.note_off_unmatched",
+      "message": "ignored 1 note-offs without a sounding note",
+      "severity": "info"
+    },
+    {
+      "code": "midi.lyric_default",
+      "message": "3 notes have no lyric and sing \"la\"",
+      "severity": "info"
+    },
+    {
+      "code": "midi.invalid_utf8",
+      "message": "1 texts are not valid UTF-8; invalid bytes were replaced with U+FFFD",
+      "severity": "warning"
+    },
+    {
+      "code": "midi.ignored.controller",
+      "message": "ignored 2 control-change events (controller)",
+      "severity": "warning"
+    },
+    {
+      "code": "midi.ignored.marker",
+      "message": "ignored 1 meta events of this kind (marker)",
+      "severity": "info"
+    },
+    {
+      "code": "midi.ignored.pitch_bend",
+      "message": "ignored 1 pitch-bend events (pitch_bend)",
+      "severity": "warning"
+    },
+    {
+      "code": "midi.ignored.program_change",
+      "message": "ignored 1 program changes (program_change)",
+      "severity": "info"
+    },
+    {
+      "code": "midi.ignored.track_name",
+      "message": "ignored 1 track names of tracks without notes or repeated names (track_name)",
+      "severity": "info"
+    },
+    {
+      "code": "midi.ignored.velocity",
+      "message": "ignored 14 note velocities (velocity)",
+      "severity": "info"
+    }
+  ],
+  "project": {
+    "key_map": [
+      {
+        "scale": "major",
+        "tick": 0,
+        "tonic": 7
+      },
+      {
+        "scale": "minor",
+        "tick": 15360,
+        "tonic": 4
+      }
+    ],
+    "meta": {
+      "artist": "",
+      "comment": "",
+      "title": "Basic Song"
+    },
+    "seeds": {},
+    "takes": {},
+    "tempo_map": [
+      {
+        "bpm": 120.0,
+        "tick": 0
+      },
+      {
+        "bpm": 100.0,
+        "tick": 15360
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "denominator": 4,
+        "numerator": 4
+      },
+      {
+        "bar": 2,
+        "denominator": 4,
+        "numerator": 3
+      },
+      {
+        "bar": 6,
+        "denominator": 4,
+        "numerator": 4
+      }
+    ],
+    "tracks": [
+      {
+        "backend": "",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 1,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Melody",
+        "parts": [
+          {
+            "id": 2,
+            "length": 21120,
+            "name": "Melody",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 3,
+                "length": 1920,
+                "lyric": "Twin-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6000.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 4,
+                "length": 1920,
+                "lyric": "kle",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6200.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 5,
+                "length": 1920,
+                "lyric": "twin-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6400.0,
+                "start": 3840
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 6,
+                "length": 1920,
+                "lyric": "kle",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6500.0,
+                "start": 5760
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 7,
+                "length": 1920,
+                "lyric": "lit-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6700.0,
+                "start": 7680
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 8,
+                "length": 1920,
+                "lyric": "tle",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6900.0,
+                "start": 9600
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 9,
+                "length": 1920,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7100.0,
+                "start": 11520
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 10,
+                "length": 1920,
+                "lyric": "ら",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 13440
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 11,
+                "length": 1920,
+                "lyric": "�la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7400.0,
+                "start": 15360
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 12,
+                "length": 1920,
+                "lyric": "star",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7600.0,
+                "start": 17280
+              }
+            ],
+            "start": 0
+          }
+        ],
+        "singer": {
+          "id": ""
+        },
+        "voice_mix": []
+      },
+      {
+        "backend": "",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 13,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Harmony",
+        "parts": [
+          {
+            "id": 14,
+            "length": 21120,
+            "name": "Harmony",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 15,
+                "length": 1920,
+                "lyric": "ooh",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 5500.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 16,
+                "length": 3840,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 5700.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 17,
+                "length": 1920,
+                "lyric": "aah",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6400.0,
+                "start": 7680
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 18,
+                "length": 3840,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 5900.0,
+                "start": 13440
+              }
+            ],
+            "start": 0
+          }
+        ],
+        "singer": {
+          "id": ""
+        },
+        "voice_mix": []
+      }
+    ]
+  }
+}
