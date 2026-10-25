@@ -68,6 +68,46 @@ impl EngineConfig {
     }
 }
 
+/// What a bridge publish did.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BridgePublish {
+    /// Channel name.
+    pub channel: String,
+    /// Channel file the plugin maps.
+    pub path: String,
+    /// Publication number; the plugin switches to it at its next block.
+    pub generation: u64,
+    /// Seconds of audio published.
+    pub seconds: f64,
+    /// The render that was published.
+    pub render_id: String,
+}
+
+/// The DAW side of a bridge channel, as the plugin last reported it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BridgeStatus {
+    /// Channel name.
+    pub channel: String,
+    /// Channel file.
+    pub path: String,
+    /// Generation the DAW plays, if anything is published.
+    pub published_generation: Option<u64>,
+    /// Whether a plugin has ever reported transport on this channel.
+    pub plugin_seen: bool,
+    /// Host transport is playing.
+    pub playing: bool,
+    /// Host song position in seconds.
+    pub position_secs: f64,
+    /// Host song position in quarter notes.
+    pub position_beats: f64,
+    /// Host tempo in BPM, if the host reports one.
+    pub host_tempo: Option<f64>,
+    /// Host sample rate.
+    pub host_sample_rate: f64,
+    /// Process calls the plugin has made; changes while the DAW runs.
+    pub heartbeat: u64,
+}
+
 /// A loaded phonemizer plugin.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct PhonemizerInfo {
@@ -816,6 +856,57 @@ impl Engine {
             },
         );
         Ok(summary)
+    }
+
+    /// Renders a project and publishes the audio to a DAW bridge channel
+    /// (`default` when `None`), where the Cantor plugin plays it in sync
+    /// with the host. Project tick 0 plays at host time 0.
+    pub fn bridge_publish(
+        &self,
+        id: &str,
+        channel: Option<&str>,
+        quality: Quality,
+    ) -> Result<BridgePublish> {
+        let summary = self.render(id, None, quality)?;
+        let wav = summary.audio_uri.trim_start_matches("file://");
+        let (samples, sr) = cantor_render::wav::read_stereo_f32(Path::new(wav))
+            .map_err(|e| EngineError::Io(format!("{wav}: {e}")))?;
+        let name = channel.unwrap_or(cantor_bridge::DEFAULT_CHANNEL);
+        let ch = cantor_bridge::Channel::open_named(name)
+            .map_err(|e| EngineError::Io(format!("bridge channel `{name}`: {e}")))?;
+        let generation = ch
+            .region()
+            .publish(sr, &samples)
+            .map_err(EngineError::Invalid)?;
+        Ok(BridgePublish {
+            channel: name.to_owned(),
+            path: ch.path().display().to_string(),
+            generation,
+            seconds: summary.seconds,
+            render_id: summary.render_id,
+        })
+    }
+
+    /// What the DAW side of a bridge channel last reported.
+    pub fn bridge_status(&self, channel: Option<&str>) -> Result<BridgeStatus> {
+        let name = channel.unwrap_or(cantor_bridge::DEFAULT_CHANNEL);
+        let ch = cantor_bridge::Channel::open_named(name)
+            .map_err(|e| EngineError::Io(format!("bridge channel `{name}`: {e}")))?;
+        let r = ch.region();
+        let host = r.read_host();
+        let h = host.unwrap_or_default();
+        Ok(BridgeStatus {
+            channel: name.to_owned(),
+            path: ch.path().display().to_string(),
+            published_generation: r.active_info().map(|i| i.2),
+            plugin_seen: host.is_some(),
+            playing: h.playing,
+            position_secs: h.position_secs,
+            position_beats: h.position_beats,
+            host_tempo: h.tempo,
+            host_sample_rate: h.sample_rate,
+            heartbeat: h.heartbeat,
+        })
     }
 
     /// A previous render's summary.

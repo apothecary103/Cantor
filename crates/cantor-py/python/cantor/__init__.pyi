@@ -40,6 +40,9 @@ class Project:
         start: int | None = None,
         end: int | None = None,
     ) -> Report: ...
+    def publish_to_bridge(
+        self, channel: str | None = None, quality: Literal["preview", "final"] = "preview"
+    ) -> int: ...
     def save(self, path: str | PathLike[str] | None = None) -> str: ...
 
 class Transaction:

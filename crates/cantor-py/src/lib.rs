@@ -256,6 +256,32 @@ impl Project {
         Ok(Report { summary })
     }
 
+    /// Renders and sends the audio to the Cantor DAW plugin on a bridge
+    /// channel; returns the publication generation.
+    #[pyo3(signature = (channel = None, quality = "preview"))]
+    fn publish_to_bridge(
+        &self,
+        py: Python<'_>,
+        channel: Option<String>,
+        quality: &str,
+    ) -> PyResult<u64> {
+        let q = match quality {
+            "preview" => Quality::Preview,
+            "final" => Quality::Final,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "quality must be preview or final, not {other:?}"
+                )));
+            }
+        };
+        let engine = self.engine.clone();
+        let id = self.id.clone();
+        let published = py
+            .detach(move || engine.bridge_publish(&id, channel.as_deref(), q))
+            .map_err(err)?;
+        Ok(published.generation)
+    }
+
     /// Saves to `path`, or where the project was opened from.
     #[pyo3(signature = (path = None))]
     fn save(&self, path: Option<std::path::PathBuf>) -> PyResult<String> {

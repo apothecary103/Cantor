@@ -198,6 +198,7 @@ impl CantorWindow {
                 });
             }
             "render.preview" => self.start_render(cx),
+            "bridge.publish" => self.start_bridge_publish(cx),
             "macro.toggle" => {
                 if let Some(script) = self.editor.toggle_recording() {
                     let path = std::env::temp_dir().join("cantor-macro.py");
@@ -236,6 +237,35 @@ impl CantorWindow {
                     }
                     Err(e) => view.editor.status = format!("render failed: {e}"),
                 }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Renders and publishes to the DAW bridge's default channel.
+    fn start_bridge_publish(&mut self, cx: &mut Context<Self>) {
+        if self.rendering {
+            return;
+        }
+        self.rendering = true;
+        self.editor.status = "sending to the DAW…".into();
+        let engine = self.editor.engine().clone();
+        let id = self.editor.project_id().to_owned();
+        let task = cx.background_executor().spawn(async move {
+            engine.bridge_publish(&id, None, cantor_render::render::Quality::Preview)
+        });
+        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let result = task.await;
+            let _ = this.update(cx, |view, cx| {
+                view.rendering = false;
+                view.editor.status = match result {
+                    Ok(p) => format!(
+                        "sent {:.1} s to DAW channel `{}` (generation {})",
+                        p.seconds, p.channel, p.generation
+                    ),
+                    Err(e) => format!("sending to the DAW failed: {e}"),
+                };
                 cx.notify();
             });
         })

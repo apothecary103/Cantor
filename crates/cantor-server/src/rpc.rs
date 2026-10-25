@@ -29,6 +29,8 @@ pub const METHODS: &[&str] = &[
     "list_singers",
     "get_singer_schema",
     "list_phonemizers",
+    "bridge_publish",
+    "bridge_status",
     "apply_ops",
     "retake",
     "select_take",
@@ -170,6 +172,19 @@ fn preview() -> Quality {
     Quality::Preview
 }
 #[derive(Deserialize)]
+struct BridgePublishP {
+    project_id: String,
+    #[serde(default)]
+    channel: Option<String>,
+    #[serde(default = "preview")]
+    quality: Quality,
+}
+#[derive(Deserialize)]
+struct BridgeStatusP {
+    #[serde(default)]
+    channel: Option<String>,
+}
+#[derive(Deserialize)]
 struct CompareP {
     render_a: String,
     render_b: String,
@@ -229,6 +244,14 @@ pub fn dispatch(engine: &Engine, method: &str, p: Value) -> Result<Value, RpcErr
         }
         "list_singers" => to_value(engine.list_singers()),
         "list_phonemizers" => to_value(engine.list_phonemizers()),
+        "bridge_publish" => {
+            let a: BridgePublishP = params(p)?;
+            to_value(engine.bridge_publish(&a.project_id, a.channel.as_deref(), a.quality)?)
+        }
+        "bridge_status" => {
+            let a: BridgeStatusP = params(p)?;
+            to_value(engine.bridge_status(a.channel.as_deref())?)
+        }
         "get_singer_schema" => to_value(engine.get_singer_schema(&params::<SingerP>(p)?.singer)?),
         "apply_ops" => {
             let a: OpsP = params(p)?;

@@ -6,11 +6,11 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 /// Crates with `unsafe` code or concurrency worth checking under Miri.
-const MIRI_CRATES: &[&str] = &["cantor-core"];
+const MIRI_CRATES: &[&str] = &["cantor-core", "cantor-bridge"];
 
-/// Crates whose tests run under ThreadSanitizer. cantor-audio (realtime
-/// mixer) and the engine thread join this list when they land.
-const TSAN_CRATES: &[&str] = &["cantor-core"];
+/// Crates whose tests run under ThreadSanitizer: the bridge's lock-free
+/// channel is shared between the engine and the plugin's audio thread.
+const TSAN_CRATES: &[&str] = &["cantor-core", "cantor-bridge"];
 
 /// A dependency-free workspace crate used to observe the codegen backend.
 const CODEGEN_PROBE: &str = "cantor-plugin-sdk";
@@ -33,11 +33,16 @@ commands:
   miri            run Miri on crates with unsafe code
   tsan            run ThreadSanitizer on the engine and audio crates
   conformance     run the official MCP conformance suite against the fixture server
+                  (needs network for npx; not part of ci)
   python          build the Python wheel, install it in a venv, run the docs example and API tests
   shader-check    macOS: check the app without default features (precompiled-shader path)
-                  (needs network for npx; not part of ci)
-  app           run the desktop app (arrives in M4)
-  bench           render and UI benchmarks (arrive in M2/M4)";
+  bridge [--validate] [--wrap] [--auval]
+                  build the DAW bridge plugin (target/bridge/CantorBridge.clap);
+                  --validate runs clap-validator; --wrap builds VST3 (and AUv2 on
+                  macOS) with clap-wrapper (needs network); --auval installs the AU
+                  in ~/Library and runs auval (CI only)
+  app             run the desktop app
+  bench           UI benchmark (2,000 notes, scripted scroll/zoom)";
 
 type Result<T = ()> = std::result::Result<T, String>;
 
@@ -53,6 +58,11 @@ fn main() -> ExitCode {
         Some("conformance") => conformance(),
         Some("python") => python(),
         Some("shader-check") => shader_check(),
+        Some("bridge") => bridge(
+            rest.contains(&"--validate"),
+            rest.contains(&"--wrap") || rest.contains(&"--auval"),
+            rest.contains(&"--auval"),
+        ),
         Some("app") => run(
             "cantor-app",
             cargo()
@@ -633,6 +643,221 @@ fn shader_check() -> Result {
             build.display()
         )),
     }
+}
+
+/// Builds the CLAP bridge plugin in release and bundles it: a `.clap`
+/// bundle directory on macOS (ad-hoc signed when `codesign` exists), the
+/// renamed shared library elsewhere. With `validate`, runs clap-validator;
+/// with `wrap`, builds the VST3/AUv2 wrappers; with `auval`, installs and
+/// validates the AU.
+fn bridge(validate: bool, wrap: bool, auval: bool) -> Result {
+    run(
+        "build cantor-bridge-clap (release)",
+        cargo().args(["build", "--release", "--locked", "-p", "cantor-bridge-clap"]),
+    )?;
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root().join("target"));
+    let out = target.join("bridge");
+    let io = |e: std::io::Error| e.to_string();
+    std::fs::create_dir_all(&out).map_err(io)?;
+    // Keep the clap-wrapper checkout and SDK cache; replace the bundles.
+    for old in [
+        "CantorBridge.clap",
+        "CantorBridge.vst3",
+        "CantorBridge.component",
+    ] {
+        let p = out.join(old);
+        let _ = std::fs::remove_dir_all(&p);
+        let _ = std::fs::remove_file(&p);
+    }
+    let bundle = out.join("CantorBridge.clap");
+    if cfg!(target_os = "macos") {
+        let lib = target.join("release/libcantor_bridge_clap.dylib");
+        let macos = bundle.join("Contents/MacOS");
+        std::fs::create_dir_all(&macos).map_err(io)?;
+        std::fs::copy(&lib, macos.join("CantorBridge")).map_err(io)?;
+        std::fs::write(
+            bundle.join("Contents/Info.plist"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Cantor Bridge</string>
+  <key>CFBundleExecutable</key><string>CantorBridge</string>
+  <key>CFBundleIdentifier</key><string>org.cantor.bridge</string>
+  <key>CFBundlePackageType</key><string>BNDL</string>
+  <key>CFBundleVersion</key><string>{v}</string>
+  <key>CFBundleShortVersionString</key><string>{v}</string>
+</dict>
+</plist>
+"#,
+                v = env!("CARGO_PKG_VERSION")
+            ),
+        )
+        .map_err(io)?;
+        if Command::new("/usr/bin/codesign")
+            .arg("--version")
+            .output()
+            .is_ok()
+        {
+            run(
+                "ad-hoc sign the bundle",
+                Command::new("/usr/bin/codesign")
+                    .args(["--force", "--sign", "-"])
+                    .arg(&bundle),
+            )?;
+        }
+    } else {
+        let lib = target.join("release/libcantor_bridge_clap.so");
+        std::fs::copy(&lib, &bundle).map_err(io)?;
+    }
+    eprintln!("bridge plugin: {}", bundle.display());
+    if validate {
+        run(
+            "clap-validator",
+            Command::new("clap-validator")
+                .args(["validate", "--only-failed"])
+                .arg(&bundle),
+        )?;
+    }
+    if wrap {
+        bridge_wrap(&out, &bundle)?;
+    }
+    if auval {
+        if !cfg!(target_os = "macos") {
+            return Err("--auval needs macOS".into());
+        }
+        let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+        let dest = PathBuf::from(home).join("Library/Audio/Plug-Ins/Components");
+        std::fs::create_dir_all(&dest).map_err(io)?;
+        run(
+            "install the AU",
+            Command::new("cp")
+                .args(["-R"])
+                .arg(out.join("CantorBridge.component"))
+                .arg(&dest),
+        )?;
+        // Hosted CI runners do not always scan the user folder; the system
+        // folder is reliable (passwordless sudo there; this flag is CI-only).
+        if std::env::var_os("GITHUB_ACTIONS").is_some() {
+            run(
+                "install the AU system-wide",
+                Command::new("sudo")
+                    .args(["cp", "-R"])
+                    .arg(out.join("CantorBridge.component"))
+                    .arg("/Library/Audio/Plug-Ins/Components/"),
+            )?;
+        }
+        // Registration is asynchronous and the registrar caches what it has
+        // seen; on loaded CI machines it can take a while. Restart it, wait
+        // for the listing, validate; retry a few times.
+        let installed = dest.join("CantorBridge.component");
+        let _ = Command::new("/usr/bin/codesign")
+            .args(["-dv"])
+            .arg(&installed)
+            .status();
+        let mut last = Err(String::from("auval did not run"));
+        for attempt in 1..=3 {
+            let _ = Command::new("/usr/bin/killall")
+                .args(["-9", "AudioComponentRegistrar"])
+                .status();
+            let listed = (0..45).any(|_| {
+                let found = Command::new("/usr/bin/auval")
+                    .arg("-a")
+                    .output()
+                    .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("Brdg Cntr"));
+                if !found {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                found
+            });
+            eprintln!("auval attempt {attempt}: component listed: {listed}");
+            last = run(
+                "auval",
+                Command::new("/usr/bin/auval").args(["-v", "aumu", "Brdg", "Cntr"]),
+            );
+            if last.is_ok() {
+                break;
+            }
+        }
+        last?;
+    }
+    Ok(())
+}
+
+/// clap-wrapper release the VST3/AU wrappers are built with.
+const CLAP_WRAPPER_TAG: &str = "v0.17.0";
+
+/// Builds VST3 (and AUv2 on macOS) wrappers around `clap` with clap-wrapper,
+/// which downloads the VST3 and AudioUnit SDKs.
+fn bridge_wrap(out: &Path, clap: &Path) -> Result {
+    let src = out.join("clap-wrapper");
+    if !src.join("CMakeLists.txt").is_file() {
+        run(
+            "fetch clap-wrapper",
+            Command::new("git")
+                .args([
+                    "clone",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    "--branch",
+                    CLAP_WRAPPER_TAG,
+                ])
+                .arg("https://github.com/free-audio/clap-wrapper.git")
+                .arg(&src),
+        )?;
+    }
+    let build = out.join("wrap-build");
+    // Always a clean build: a build directory restored from a CI cache can
+    // carry bundles from another run.
+    let _ = std::fs::remove_dir_all(&build);
+    run(
+        "configure wrappers",
+        Command::new("cmake")
+            .arg("-S")
+            .arg(root().join("crates/cantor-bridge-clap/wrap"))
+            .arg("-B")
+            .arg(&build)
+            .arg(format!("-DCLAP_WRAPPER_SOURCE={}", src.display()))
+            .arg(format!("-DCANTOR_CLAP={}", clap.display()))
+            .arg(format!(
+                "-DCPM_SOURCE_CACHE={}",
+                out.join("cpm-cache").display()
+            ))
+            .arg("-DCMAKE_BUILD_TYPE=Release"),
+    )?;
+    run(
+        "build wrappers",
+        Command::new("cmake").arg("--build").arg(&build).args([
+            "--config",
+            "Release",
+            "--parallel",
+        ]),
+    )?;
+    let mut made = vec!["CantorBridge.vst3"];
+    if cfg!(target_os = "macos") {
+        made.push("CantorBridge.component");
+    }
+    for name in made {
+        run(
+            &format!("copy {name}"),
+            Command::new("cp").arg("-R").arg(build.join(name)).arg(out),
+        )?;
+        if cfg!(target_os = "macos") {
+            // Hosts refuse unsigned bundles on Apple silicon.
+            run(
+                &format!("ad-hoc sign {name}"),
+                Command::new("/usr/bin/codesign")
+                    .args(["--force", "--deep", "--sign", "-"])
+                    .arg(out.join(name)),
+            )?;
+        }
+        eprintln!("bridge plugin: {}", out.join(name).display());
+    }
+    Ok(())
 }
 
 /// UI benchmark: 2,000 notes with curves, scripted scroll and zoom in a real

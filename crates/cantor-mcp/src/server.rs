@@ -208,6 +208,27 @@ fn preview() -> Quality {
     Quality::Preview
 }
 
+/// Arguments for bridge_publish.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BridgePublishArgs {
+    /// Project handle.
+    pub project_id: String,
+    /// Bridge channel (default "default"); the DAW plugin plays this channel.
+    #[serde(default)]
+    pub channel: Option<String>,
+    /// preview (fast) or final.
+    #[serde(default = "preview")]
+    pub quality: Quality,
+}
+
+/// Arguments for bridge_status.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BridgeStatusArgs {
+    /// Bridge channel (default "default").
+    #[serde(default)]
+    pub channel: Option<String>,
+}
+
 /// Arguments for compare.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CompareArgs {
@@ -436,6 +457,35 @@ impl CantorMcp {
     ) -> ToolResult<cantor_server::engine::RenderSummary> {
         let e = self.engine.clone();
         blocking(move || e.render(&a.project_id, a.range, a.quality))
+            .await
+            .map(Json)
+    }
+
+    /// Renders the project and sends the audio to the Cantor DAW plugin (CLAP/VST3/AU) on a bridge channel; the DAW plays it in sync with its transport, tick 0 at host time 0.
+    #[tool(annotations(
+        read_only_hint = false,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn bridge_publish(
+        &self,
+        Parameters(a): Parameters<BridgePublishArgs>,
+    ) -> ToolResult<cantor_server::engine::BridgePublish> {
+        let e = self.engine.clone();
+        blocking(move || e.bridge_publish(&a.project_id, a.channel.as_deref(), a.quality))
+            .await
+            .map(Json)
+    }
+
+    /// The DAW's transport as the Cantor plugin last reported it: playing, position, host tempo (compare with the project tempo), and whether a plugin is connected.
+    #[tool(annotations(read_only_hint = true, idempotent_hint = true, open_world_hint = false))]
+    async fn bridge_status(
+        &self,
+        Parameters(a): Parameters<BridgeStatusArgs>,
+    ) -> ToolResult<cantor_server::engine::BridgeStatus> {
+        let e = self.engine.clone();
+        blocking(move || e.bridge_status(a.channel.as_deref()))
             .await
             .map(Json)
     }

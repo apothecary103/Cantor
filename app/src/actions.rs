@@ -554,6 +554,15 @@ pub const REGISTRY: &[ActionDef] = &[
         build: None,
     },
     ActionDef {
+        id: "bridge.publish",
+        name: "Send to DAW (bridge)",
+        keys: &["cmd-shift-b", "ctrl-shift-b"],
+        kind: Kind::View,
+        op: None,
+        python: "Project.publish_to_bridge",
+        build: None,
+    },
+    ActionDef {
         id: "view.palette",
         name: "Command palette",
         keys: &["cmd-k", "ctrl-k"],
