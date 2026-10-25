@@ -399,6 +399,12 @@ impl Engine {
         }))
     }
 
+    /// Dictionary phonemes for a lyric as `singer` would sing it, if the
+    /// singer is installed.
+    pub fn phonemes(&self, singer: &str, lyric: &str, lang: Option<&str>) -> Option<Vec<String>> {
+        self.backend_for(singer).ok()?.phonemes_for(lyric, lang)
+    }
+
     fn phonemes_fn(&self, track: &cantor_core::Track) -> Option<Arc<DiffSinger>> {
         self.backend_for(&track.singer.id).ok()
     }
@@ -471,6 +477,28 @@ impl Engine {
             vec![Op::SelectTake { phrase, take }],
             false,
         )
+    }
+
+    /// Undoes the last edit. Returns `None` at the start of history.
+    pub fn undo(&self, id: &str) -> Result<Option<ApplyResult>> {
+        let p = self.project(id)?;
+        let mut p = p.lock().expect("project lock");
+        let r = p.doc.undo();
+        if let Some(r) = &r {
+            p.record(r);
+        }
+        Ok(r)
+    }
+
+    /// Redoes along the most recent branch. Returns `None` if nothing to redo.
+    pub fn redo(&self, id: &str) -> Result<Option<ApplyResult>> {
+        let p = self.project(id)?;
+        let mut p = p.lock().expect("project lock");
+        let r = p.doc.redo();
+        if let Some(r) = &r {
+            p.record(r);
+        }
+        Ok(r)
     }
 
     /// Names the current state.

@@ -5,6 +5,16 @@ use cantor_io::ImportError;
 use cantor_io::import::midi;
 use cantor_io::project_file::{self, Compression};
 
+/// JSON snapshots with sorted map keys, so they do not depend on whether
+/// serde_json's `preserve_order` feature is unified into the build.
+macro_rules! assert_snapshot_sorted {
+    ($($t:tt)*) => {
+        insta::with_settings!({ sort_maps => true }, {
+            insta::assert_json_snapshot!($($t)*);
+        })
+    };
+}
+
 fn fixture(name: &str) -> Vec<u8> {
     let path = format!("{}/tests/fixtures/midi/{name}", env!("CARGO_MANIFEST_DIR"));
     std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
@@ -20,12 +30,12 @@ fn snapshot_value(name: &str) -> serde_json::Value {
 
 #[test]
 fn basic_snapshot() {
-    insta::assert_json_snapshot!("basic", snapshot_value("basic.mid"));
+    assert_snapshot_sorted!("basic", snapshot_value("basic.mid"));
 }
 
 #[test]
 fn odd_ppq_snapshot() {
-    insta::assert_json_snapshot!("odd_ppq", snapshot_value("odd_ppq.mid"));
+    assert_snapshot_sorted!("odd_ppq", snapshot_value("odd_ppq.mid"));
 }
 
 #[test]

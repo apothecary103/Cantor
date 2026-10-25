@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "xtask"]
+members = ["crates/*", "app", "xtask"]
 default-members = ["crates/*"]
 
 [workspace.package]
@@ -30,6 +30,7 @@ serde-saphyr = "=2.0.0"
 zstd = "=0.14.3"
 blake3 = "=1.8.7"
 sha2 = "=0.11.1"
+gpui-kit = { version = "=0.8.0" }
 pyo3 = { version = "=0.29.3", features = ["abi3-py312", "abi3t"] }
 ebur128 = "=0.1.10"
 realfft = "=3.5.0"

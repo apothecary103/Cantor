@@ -50,6 +50,9 @@ jobs:
         run: nix flake check
       - name: cargo xtask ci
         run: nix develop --command cargo xtask ci
+      - name: precompiled-shader check (macOS)
+        if: runner.os == 'macOS'
+        run: nix develop --command cargo xtask shader-check
       - name: cargo xtask schema leaves no diff
         run: |
           nix develop --command cargo xtask schema

@@ -4,6 +4,16 @@ use cantor_io::import::{ImportError, Imported, ustx};
 use cantor_io::project_file::{self, Compression};
 use std::path::PathBuf;
 
+/// JSON snapshots with sorted map keys, so they do not depend on whether
+/// serde_json's `preserve_order` feature is unified into the build.
+macro_rules! assert_snapshot_sorted {
+    ($($t:tt)*) => {
+        insta::with_settings!({ sort_maps => true }, {
+            insta::assert_json_snapshot!($($t)*);
+        })
+    };
+}
+
 fn fixture(name: &str) -> Vec<u8> {
     let path: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
@@ -39,13 +49,13 @@ fn codes(imported: &Imported) -> Vec<&str> {
 #[test]
 fn basic_fixture() {
     let imported = import_fixture("basic.ustx");
-    insta::assert_json_snapshot!("basic", snapshot_value(&imported));
+    assert_snapshot_sorted!("basic", snapshot_value(&imported));
 }
 
 #[test]
 fn legacy_fixture() {
     let imported = import_fixture("legacy.ustx");
-    insta::assert_json_snapshot!("legacy", snapshot_value(&imported));
+    assert_snapshot_sorted!("legacy", snapshot_value(&imported));
 }
 
 #[test]

@@ -4,6 +4,16 @@ use cantor_io::import::{Format, ImportError, Imported, import};
 use cantor_io::project_file::{Compression, from_bytes, to_bytes};
 use std::path::PathBuf;
 
+/// JSON snapshots with sorted map keys, so they do not depend on whether
+/// serde_json's `preserve_order` feature is unified into the build.
+macro_rules! assert_snapshot_sorted {
+    ($($t:tt)*) => {
+        insta::with_settings!({ sort_maps => true }, {
+            insta::assert_json_snapshot!($($t)*);
+        })
+    };
+}
+
 fn fixture(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/musicxml")
@@ -17,7 +27,7 @@ fn import_xml(bytes: &[u8]) -> Result<Imported, ImportError> {
 
 fn snapshot(name: &str) -> Imported {
     let imported = import_xml(&fixture(&format!("{name}.musicxml"))).expect("imports");
-    insta::assert_json_snapshot!(
+    assert_snapshot_sorted!(
         name,
         serde_json::json!({
             "project": imported.project,

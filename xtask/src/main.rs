@@ -34,6 +34,7 @@ commands:
   tsan            run ThreadSanitizer on the engine and audio crates
   conformance     run the official MCP conformance suite against the fixture server
   python          build the Python wheel, install it in a venv, run the docs example and API tests
+  shader-check    macOS: check the app without default features (precompiled-shader path)
                   (needs network for npx; not part of ci)
   app           run the desktop app (arrives in M4)
   bench           render and UI benchmarks (arrive in M2/M4)";
@@ -51,8 +52,14 @@ fn main() -> ExitCode {
         Some("tsan") => tsan(),
         Some("conformance") => conformance(),
         Some("python") => python(),
-        Some("app") => Err("the desktop app arrives in milestone M4".into()),
-        Some("bench") => Err("benchmarks arrive with rendering (M2) and the app (M4)".into()),
+        Some("shader-check") => shader_check(),
+        Some("app") => run(
+            "cantor-app",
+            cargo()
+                .args(["run", "--release", "-p", "app", "--"])
+                .args(&rest),
+        ),
+        Some("bench") => bench(),
         Some("-h" | "--help" | "help") => {
             println!("{USAGE}");
             Ok(())
@@ -498,5 +505,74 @@ fn python() -> Result {
     env(&mut api);
     run("Python API tests", &mut api)?;
     eprintln!("\nxtask python: wheel built, installed and the spec example ran");
+    Ok(())
+}
+
+/// The release (precompiled-shader) configuration of the app needs Xcode's
+/// Metal compiler, which the Nix shell does not provide. Skips with a
+/// message where it is missing. Note: gpui-kit 0.8.0 still enables runtime
+/// shaders unconditionally (docs/decisions/0017-desktop-app.md).
+fn shader_check() -> Result {
+    if !cfg!(target_os = "macos") {
+        eprintln!("shader-check: skipped (only macOS precompiles Metal shaders)");
+        return Ok(());
+    }
+    let metal = Command::new("/usr/bin/xcrun")
+        .args(["-f", "metal"])
+        .output();
+    match metal {
+        Ok(out) if out.status.success() => run(
+            "cargo check -p app --no-default-features",
+            cargo().args(["check", "--locked", "-p", "app", "--no-default-features"]),
+        ),
+        _ => {
+            eprintln!(
+                "shader-check: skipped — the Metal toolchain (xcrun metal) is not available here; \
+                 release builds run outside Nix with full Xcode"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// UI benchmark: 2,000 notes with curves, scripted scroll and zoom in a real
+/// window. Frame work (render + layout + paint) must fit 120 fps.
+fn bench() -> Result {
+    run(
+        "build app (release)",
+        cargo().args(["build", "--release", "--locked", "-p", "app"]),
+    )?;
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root().join("target"));
+    let exe = target.join("release/cantor-app");
+    eprintln!("\n==> UI benchmark (2,000 notes, 600 frames)");
+    let out = Command::new(&exe)
+        .args(["--bench", "600"])
+        .output()
+        .map_err(|e| format!("{}: {e}", exe.display()))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout
+        .lines()
+        .rev()
+        .find(|l| l.starts_with('{'))
+        .ok_or_else(|| {
+            format!(
+                "benchmark printed no result:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            )
+        })?;
+    let report: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+    println!("{}", serde_json::to_string_pretty(&report).expect("json"));
+    let presented = report["presented_fps_median"].as_f64().unwrap_or(0.0);
+    let work = report["frame_ms_median"].as_f64().unwrap_or(f64::INFINITY);
+    if presented < 118.0 {
+        return Err(format!(
+            "UI benchmark presented {presented:.0} fps median (CPU frame work {work:.2} ms); target 120"
+        ));
+    }
+    eprintln!(
+        "UI benchmark: {presented:.0} fps median presented, {work:.2} ms CPU per frame (target 120 fps)"
+    );
     Ok(())
 }

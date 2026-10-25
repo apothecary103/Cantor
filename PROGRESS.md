@@ -59,6 +59,33 @@ Done when:
 - [x] MCP conformance tests for 2026-07-28 pass (`cargo xtask
       conformance`: 197 checks, 0 failures, fixture server; 0013)
 
+## M4 Desktop app — in progress
+Parts:
+- [x] GPUI app via gpui-kit 0.8.0 (builds on the pinned nightly; 0017)
+- [x] Piano roll: scale-highlighted rows, bars/beats, sections, notes with
+      lyrics, pitch curves (model faint, user delta solid), multi-track
+- [x] Lanes: analysis heatmap, take lanes (click to select), phoneme timing
+      lane (drag boundaries to pin), parameter lane (draw curves)
+- [x] Smart pitch handles: vibrato depth, portamento length
+- [x] Script Log (Python per edit), command palette (Cmd/Ctrl+K), history
+      panel (click to restore), macro recorder (saves a runnable script)
+- [x] Action registry with Op + Python equivalents; Python API extended
+- [x] Headless screenshots in docs/screens (dark and light)
+- [x] `cargo xtask bench` UI benchmark; `cargo xtask shader-check`
+
+Done when:
+- [~] UI benchmark holds 120 fps median (2,000 notes, scripted scroll/zoom)
+      on the reference Mac and Linux machines — Mac (M-series, 120 Hz XDR):
+      120.2 fps median presented, 0.43 ms CPU per frame (whole-run average
+      65 fps incl. startup and outliers). Linux reference machine: not run.
+- [x] Every GUI action in the registry has an Op and a Python equivalent
+      (`app/src/actions.rs::every_edit_action_has_an_op_and_a_python_equivalent`)
+- [x] The app follows the visual direction, checked against
+      docs/screens/editor-{dark,light}.png (`app/tests/screens.rs`)
+- [x] macOS CI runs `cargo check -p app --no-default-features` via
+      `cargo xtask shader-check`, skipped with a message without Metal
+      (but see 0017: gpui-kit has no runtime-shader toggle)
+
 ## Open items
 - Confirm with OpenVPI that the in-memory noise rewrite fits the Qixuan
   terms of use (0010).
@@ -75,3 +102,7 @@ Done when:
 - Multi-singer projects render one singer per call (0015).
 - macOS wheels built in the Nix shell link Nix's libiconv; release wheels
   must be built outside Nix like release app builds.
+- gpui-kit 0.8.0 always enables runtime shaders; precompiled-shader release
+  builds need a gpui-kit toggle (0017).
+- Not in M4: audio playback (cantor-audio), expression pad, Python console,
+  vocal-mode selectors, voice-to-MIDI.

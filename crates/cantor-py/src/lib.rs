@@ -158,6 +158,65 @@ impl Project {
         Ok(())
     }
 
+    /// A note by id.
+    fn note(slf: Bound<'_, Self>, id: u64) -> PyResult<Note> {
+        let doc = slf.borrow().doc()?;
+        let (track, _, _) = doc
+            .note(NoteId(id))
+            .ok_or_else(|| CantorError::new_err(format!("note {id} does not exist")))?;
+        Ok(Note {
+            track: track.id,
+            project: slf.unbind(),
+            id: NoteId(id),
+        })
+    }
+
+    /// Adds or replaces the tempo at `tick`.
+    fn set_tempo(&self, tick: i64, bpm: f64) -> PyResult<()> {
+        self.submit(Op::SetTempo { tick, bpm })
+    }
+
+    /// Adds or replaces a named section.
+    fn set_section(&self, name: String, start: i64, end: i64) -> PyResult<()> {
+        self.submit(Op::SetSection { name, start, end })
+    }
+
+    /// Selects a phrase's take; `None` selects the original.
+    #[pyo3(signature = (phrase_id, take_id = None))]
+    fn select_take(&self, phrase_id: u64, take_id: Option<u64>) -> PyResult<()> {
+        self.submit(Op::SelectTake {
+            phrase: cantor_core::PhraseId(phrase_id),
+            take: take_id.map(cantor_core::TakeId),
+        })
+    }
+
+    /// Undoes the last edit; returns False at the start of history.
+    fn undo(&self) -> PyResult<bool> {
+        Ok(self.engine.undo(&self.id).map_err(err)?.is_some())
+    }
+
+    /// Redoes the last undone edit; returns False if there is none.
+    fn redo(&self) -> PyResult<bool> {
+        Ok(self.engine.redo(&self.id).map_err(err)?.is_some())
+    }
+
+    /// Names the current state.
+    fn checkpoint(&self, name: &str) -> PyResult<()> {
+        self.engine
+            .checkpoint(&self.id, name)
+            .map_err(err)
+            .map(|_| ())
+    }
+
+    /// Returns to a named checkpoint.
+    fn restore(&self, name: &str) -> PyResult<()> {
+        let (_, rev) = self.engine.snapshot(&self.id).map_err(err)?;
+        self.engine
+            .restore(&self.id, rev, name)
+            .map_err(err)
+            .map(|_| ())
+    }
+
     /// Compact text overview of the project.
     fn describe(&self) -> PyResult<String> {
         self.engine.describe_project(&self.id).map_err(err)
@@ -314,6 +373,151 @@ impl Track {
             .collect())
     }
 
+    /// Adds a note to the part containing `start` (or the first part) and
+    /// returns it. `start` is an absolute tick.
+    #[pyo3(signature = (start, length, pitch_cents, lyric = "la"))]
+    fn add_note(
+        &self,
+        py: Python<'_>,
+        start: i64,
+        length: i64,
+        pitch_cents: f64,
+        lyric: &str,
+    ) -> PyResult<Note> {
+        let doc = self.project.borrow(py).doc()?;
+        let track = doc
+            .track(self.id)
+            .ok_or_else(|| CantorError::new_err("track no longer exists"))?;
+        let part = track
+            .parts
+            .iter()
+            .find(|p| start >= p.start && start < p.start + p.length)
+            .or(track.parts.first())
+            .ok_or_else(|| CantorError::new_err("the track has no part to add notes to"))?;
+        let id = doc.next_note_id();
+        self.project.borrow(py).submit(Op::AddNote {
+            part: part.id,
+            note: cantor_core::Note {
+                id,
+                start: start - part.start,
+                length,
+                pitch_cents,
+                lyric: lyric.to_owned(),
+                lang: None,
+                phonemes: None,
+                expr: Default::default(),
+                modes: Default::default(),
+            },
+        })?;
+        Ok(Note {
+            project: self.project.clone_ref(py),
+            track: self.id,
+            id,
+        })
+    }
+
+    /// Replaces the edit layer of `param` between `start` and `end` with
+    /// `points` (list of (tick, value)).
+    #[pyo3(signature = (param, start, end, points, interp = "linear"))]
+    fn set_curve(
+        &self,
+        py: Python<'_>,
+        param: &str,
+        start: i64,
+        end: i64,
+        points: Vec<(i64, f64)>,
+        interp: &str,
+    ) -> PyResult<()> {
+        let interp = match interp {
+            "step" => Interp::Step,
+            "linear" => Interp::Linear,
+            "hermite" | "monotone_hermite" => Interp::MonotoneHermite,
+            other => return Err(PyValueError::new_err(format!("unknown interp {other:?}"))),
+        };
+        self.project.borrow(py).submit(Op::SetCurve {
+            track: self.id,
+            param: ParamId::new(param),
+            range: TickRange { start, end },
+            points,
+            interp,
+        })
+    }
+
+    /// Clears the edit layer of `param` between `start` and `end`.
+    fn clear_curve(&self, py: Python<'_>, param: &str, start: i64, end: i64) -> PyResult<()> {
+        self.set_curve(py, param, start, end, Vec::new(), "linear")
+    }
+
+    /// Generates takes for phrases overlapping `start..end`; `dims` from
+    /// "pitch", "timing", "timbre", "expression".
+    #[pyo3(signature = (start, end, dims, n_variants = 1, seed = None))]
+    fn retake(
+        &self,
+        py: Python<'_>,
+        start: i64,
+        end: i64,
+        dims: Vec<String>,
+        n_variants: u8,
+        seed: Option<u64>,
+    ) -> PyResult<()> {
+        let dims = dims
+            .iter()
+            .map(|d| match d.as_str() {
+                "pitch" => Ok(cantor_core::RetakeDim::Pitch),
+                "timing" => Ok(cantor_core::RetakeDim::Timing),
+                "timbre" => Ok(cantor_core::RetakeDim::Timbre),
+                "expression" => Ok(cantor_core::RetakeDim::Expression),
+                other => Err(PyValueError::new_err(format!(
+                    "unknown retake dimension {other:?}"
+                ))),
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        self.project.borrow(py).submit(Op::Retake {
+            track: self.id,
+            range: TickRange { start, end },
+            dims,
+            n_variants,
+            seed,
+        })
+    }
+
+    /// Changes mixer settings; omitted values are unchanged.
+    #[pyo3(signature = (gain_db = None, pan = None, mute = None, solo = None))]
+    fn set_mix(
+        &self,
+        py: Python<'_>,
+        gain_db: Option<f64>,
+        pan: Option<f64>,
+        mute: Option<bool>,
+        solo: Option<bool>,
+    ) -> PyResult<()> {
+        let doc = self.project.borrow(py).doc()?;
+        let mut mix = doc
+            .track(self.id)
+            .ok_or_else(|| CantorError::new_err("track no longer exists"))?
+            .mix
+            .clone();
+        if let Some(g) = gain_db {
+            mix.gain_db = g;
+        }
+        if let Some(p) = pan {
+            mix.pan = p;
+        }
+        if let Some(m) = mute {
+            mix.mute = m;
+        }
+        if let Some(s) = solo {
+            mix.solo = s;
+        }
+        self.project.borrow(py).submit(Op::SetTrack {
+            id: self.id,
+            patch: cantor_core::TrackPatch {
+                mix: Some(mix),
+                ..Default::default()
+            },
+        })
+    }
+
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
         Ok(format!("<cantor.Track {} {:?}>", self.id.0, self.name(py)?))
     }
@@ -447,6 +651,74 @@ impl Note {
             dt,
             dcents,
             carry_curves: true,
+        })
+    }
+
+    /// Removes the note.
+    fn remove(&self, py: Python<'_>) -> PyResult<()> {
+        self.project
+            .borrow(py)
+            .submit(Op::RemoveNotes { ids: vec![self.id] })
+    }
+
+    /// Changes the note's length in ticks.
+    fn resize(&self, py: Python<'_>, length: i64) -> PyResult<()> {
+        self.project.borrow(py).submit(Op::ResizeNote {
+            id: self.id,
+            length,
+        })
+    }
+
+    /// Sets phoneme overrides (native symbols); `lengths_ms` pins lengths.
+    /// `None` returns control to the phonemizer.
+    #[pyo3(signature = (phonemes, lengths_ms = None))]
+    fn set_phonemes(
+        &self,
+        py: Python<'_>,
+        phonemes: Option<Vec<String>>,
+        lengths_ms: Option<Vec<Option<f64>>>,
+    ) -> PyResult<()> {
+        let phonemes = phonemes.map(|ph| {
+            ph.into_iter()
+                .enumerate()
+                .map(|(i, symbol)| cantor_core::PhonemeOverride {
+                    symbol,
+                    alphabet: cantor_core::PhonemeAlphabet::Native,
+                    offset_ms: None,
+                    length_ms: lengths_ms
+                        .as_ref()
+                        .and_then(|l| l.get(i).copied().flatten()),
+                })
+                .collect()
+        });
+        self.project.borrow(py).submit(Op::SetPhonemes {
+            id: self.id,
+            phonemes,
+        })
+    }
+
+    /// Sets the transition into this note: length in ms (None = automatic),
+    /// overshoot and preparation in cents.
+    #[pyo3(signature = (length_ms = None, overshoot_cents = 0.0, preparation_cents = 0.0, before = 0.6))]
+    fn portamento(
+        &self,
+        py: Python<'_>,
+        length_ms: Option<f64>,
+        overshoot_cents: f64,
+        preparation_cents: f64,
+        before: f64,
+    ) -> PyResult<()> {
+        self.project.borrow(py).submit(Op::SetNoteExpr {
+            id: self.id,
+            expr: NoteExprPatch {
+                portamento: Some(cantor_core::Portamento {
+                    length_ms,
+                    before,
+                    overshoot_cents,
+                    preparation_cents,
+                }),
+                ..NoteExprPatch::default()
+            },
         })
     }
 
