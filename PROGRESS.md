@@ -35,7 +35,7 @@ Done when:
 - [x] A pitch-only edit re-renders through the vocoder fast path
       (render-trace tests with the real voicebank and a synthetic backend)
 
-## M3 Analysis, server, Python, MCP — done locally; CI pending
+## M3 Analysis, server, Python, MCP — done (CI green at ebe8667)
 Parts:
 - [x] cantor-analysis: pitch (score-relative, error contours), timing,
       BS.1770 loudness and true peak, artifact detectors (0014)
@@ -59,7 +59,7 @@ Done when:
 - [x] MCP conformance tests for 2026-07-28 pass (`cargo xtask
       conformance`: 197 checks, 0 failures, fixture server; 0013)
 
-## M4 Desktop app — in progress
+## M4 Desktop app — done except the Linux benchmark run (local xtask ci green; CI pending)
 Parts:
 - [x] GPUI app via gpui-kit 0.8.0 (builds on the pinned nightly; 0017)
 - [x] Piano roll: scale-highlighted rows, bars/beats, sections, notes with
