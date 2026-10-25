@@ -200,3 +200,65 @@ fn render_returns_an_analysis_report() {
             .any(|x| x.kind == cantor_analysis::artifacts::ArtifactKind::Clipping)
     );
 }
+
+#[test]
+fn xsampa_overrides_sing_the_same_phonemes_as_native_ones() {
+    let with = |alphabet, symbols: &[&str]| {
+        let mut p = project();
+        let note = &mut p.tracks[0].parts[0].notes[1]; // "shan"
+        note.phonemes = Some(
+            symbols
+                .iter()
+                .map(|s| PhonemeOverride {
+                    symbol: (*s).into(),
+                    alphabet,
+                    offset_ms: None,
+                    length_ms: None,
+                })
+                .collect(),
+        );
+        p
+    };
+    let first_phrase = Some(TickRange {
+        start: 0,
+        end: 4 * 1920,
+    });
+    let r = Renderer::new(backend(), cache("xsampa"));
+    let native = r
+        .render_range(
+            &with(PhonemeAlphabet::Native, &["sh", "an"]),
+            Quality::Preview,
+            first_phrase,
+        )
+        .unwrap();
+    let xsampa = r
+        .render_range(
+            &with(PhonemeAlphabet::XSampa, &["s`", "an"]),
+            Quality::Preview,
+            first_phrase,
+        )
+        .unwrap();
+    assert!(xsampa.diagnostics.is_empty(), "{:?}", xsampa.diagnostics);
+    assert_eq!(native.audio_hash, xsampa.audio_hash);
+
+    // A symbol outside the map is reported, and the lyric is sung instead.
+    let unknown = r
+        .render_range(
+            &with(PhonemeAlphabet::XSampa, &["Q", "an"]),
+            Quality::Preview,
+            first_phrase,
+        )
+        .unwrap();
+    assert!(
+        unknown
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "phon.xsampa_unknown" && d.message.contains('Q')),
+        "{:?}",
+        unknown.diagnostics
+    );
+    let lyric = r
+        .render_range(&project(), Quality::Preview, first_phrase)
+        .unwrap();
+    assert_eq!(unknown.audio_hash, lyric.audio_hash);
+}

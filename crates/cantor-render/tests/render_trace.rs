@@ -275,3 +275,142 @@ fn retakes_change_only_their_phrase_and_switch_back_exactly() {
     assert_eq!(back.audio_hash, original.audio_hash);
     assert_eq!(back.trace.cache_hit_rate(), 1.0);
 }
+
+fn set_track(p: &Project, patch: TrackPatch) -> Project {
+    let mut doc = Document::new(p.clone());
+    let r = doc.apply(Op::SetTrack {
+        id: TrackId(1),
+        patch,
+    });
+    assert!(r.applied, "{:?}", r.diagnostics);
+    doc.project().clone()
+}
+
+#[test]
+fn doubling_revocodes_the_cached_mel_with_seeded_layers() {
+    let dry = project();
+    let doubled = set_track(
+        &dry,
+        TrackPatch {
+            doubling: Some(Doubling {
+                layers: 4,
+                spacing: 0.8,
+                ..Doubling::default()
+            }),
+            ..TrackPatch::default()
+        },
+    );
+    let dir = tempdir("double");
+    let (r, synth) = renderer(&dir);
+    let a = r.render(&dry, Quality::Preview).unwrap();
+    let (acoustic, vocoder) = (
+        synth.acoustic_runs.load(Ordering::SeqCst),
+        synth.vocoder_runs.load(Ordering::SeqCst),
+    );
+    let b = r.render(&doubled, Quality::Preview).unwrap();
+    assert!(b.diagnostics.is_empty(), "{:?}", b.diagnostics);
+    // Three doubles per phrase, all from the cached mel: no acoustic runs.
+    assert_eq!(synth.acoustic_runs.load(Ordering::SeqCst), acoustic);
+    assert_eq!(synth.vocoder_runs.load(Ordering::SeqCst), vocoder + 6);
+    assert_ne!(a.audio_hash, b.audio_hash);
+    // The doubles are spread: left and right differ.
+    let (l, r_ch): (Vec<f32>, Vec<f32>) = b.samples.chunks(2).map(|f| (f[0], f[1])).unzip();
+    assert_ne!(l, r_ch);
+    // Fully cached on a second render, and a cold cache gives the same audio.
+    let again = r.render(&doubled, Quality::Preview).unwrap();
+    assert_eq!(again.audio_hash, b.audio_hash);
+    assert_eq!(synth.vocoder_runs.load(Ordering::SeqCst), vocoder + 6);
+    let (cold, _) = renderer(&tempdir("double-cold"));
+    assert_eq!(
+        cold.render(&doubled, Quality::Preview).unwrap().audio_hash,
+        b.audio_hash
+    );
+    // Turning doubling off restores the dry render exactly.
+    let off = set_track(
+        &doubled,
+        TrackPatch {
+            doubling: Some(Doubling::default()),
+            ..TrackPatch::default()
+        },
+    );
+    assert_eq!(
+        r.render(&off, Quality::Preview).unwrap().audio_hash,
+        a.audio_hash
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn effects_chain_is_rendered_and_bypass_is_exact() {
+    let dry = project();
+    let mut reverb = EffectSlot::new(EffectKind::Reverb);
+    reverb.params.insert("mix".into(), 0.4);
+    let comp = EffectSlot::new(EffectKind::Compressor);
+    let wet = set_track(
+        &dry,
+        TrackPatch {
+            effects: Some(vec![comp.clone(), reverb.clone()]),
+            ..TrackPatch::default()
+        },
+    );
+    let dir = tempdir("fx");
+    let (r, _) = renderer(&dir);
+    let a = r.render(&dry, Quality::Preview).unwrap();
+    let b = r.render(&wet, Quality::Preview).unwrap();
+    assert!(b.diagnostics.is_empty(), "{:?}", b.diagnostics);
+    assert_ne!(a.audio_hash, b.audio_hash);
+    let tail = cantor_render::fx::tail_secs(&reverb);
+    let extra = (b.samples.len() - a.samples.len()) / 2;
+    assert_eq!(
+        extra,
+        (tail * 8000.0).ceil() as usize,
+        "reverb tail appended"
+    );
+    assert_eq!(
+        r.render(&wet, Quality::Preview).unwrap().audio_hash,
+        b.audio_hash
+    );
+
+    // Disabled slots leave the render bit-identical to the dry one.
+    let bypassed = set_track(
+        &dry,
+        TrackPatch {
+            effects: Some(
+                [comp, reverb]
+                    .into_iter()
+                    .map(|mut s| {
+                        s.enabled = false;
+                        s
+                    })
+                    .collect(),
+            ),
+            ..TrackPatch::default()
+        },
+    );
+    assert_eq!(
+        r.render(&bypassed, Quality::Preview).unwrap().audio_hash,
+        a.audio_hash
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn invalid_effect_parameters_are_rejected_with_a_diagnostic() {
+    let mut doc = Document::new(project());
+    let mut slot = EffectSlot::new(EffectKind::Eq);
+    slot.params.insert("mid_gain_db".into(), 60.0);
+    slot.params.insert("loudness".into(), 1.0);
+    let r = doc.apply(Op::SetTrack {
+        id: TrackId(1),
+        patch: TrackPatch {
+            effects: Some(vec![slot]),
+            ..TrackPatch::default()
+        },
+    });
+    assert!(!r.applied);
+    let text = format!("{:?}", r.diagnostics);
+    assert!(
+        text.contains("loudness") && text.contains("mid_gain_db"),
+        "{text}"
+    );
+}

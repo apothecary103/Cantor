@@ -17,7 +17,7 @@ use cantor_server::{Engine, EngineConfig, EngineError};
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::types::{PyDict, PyType};
 use std::sync::{Arc, Mutex, OnceLock};
 
 create_exception!(
@@ -513,6 +513,88 @@ impl Track {
             id: self.id,
             patch: cantor_core::TrackPatch {
                 mix: Some(mix),
+                ..Default::default()
+            },
+        })
+    }
+
+    /// Replaces the effects chain. Each entry is a dict with `kind`
+    /// (`"eq"`, `"compressor"`, `"de_esser"` or `"reverb"`), optional
+    /// `enabled` (default true) and optional `params` (name → value; see
+    /// the effect registry for names, units and ranges).
+    fn set_effects(&self, py: Python<'_>, chain: Vec<Bound<'_, PyDict>>) -> PyResult<()> {
+        let mut effects = Vec::with_capacity(chain.len());
+        for entry in chain {
+            let kind: String = entry
+                .get_item("kind")?
+                .ok_or_else(|| PyValueError::new_err("each effect needs a `kind`"))?
+                .extract()?;
+            let kind: cantor_core::EffectKind =
+                serde_json::from_value(serde_json::Value::String(kind.clone())).map_err(|_| {
+                    PyValueError::new_err(format!(
+                        "unknown effect kind `{kind}` (eq, compressor, de_esser, reverb)"
+                    ))
+                })?;
+            let mut slot = cantor_core::EffectSlot::new(kind);
+            if let Some(e) = entry.get_item("enabled")? {
+                slot.enabled = e.extract()?;
+            }
+            if let Some(params) = entry.get_item("params")? {
+                slot.params = params.extract()?;
+            }
+            effects.push(slot);
+        }
+        self.project.borrow(py).submit(Op::SetTrack {
+            id: self.id,
+            patch: cantor_core::TrackPatch {
+                effects: Some(effects),
+                ..Default::default()
+            },
+        })
+    }
+
+    /// Changes voice doubling; omitted values are unchanged. `layers = 1`
+    /// turns doubling off.
+    #[pyo3(signature = (layers = None, spacing = None, detune_cents = None, jitter_ms = None, timbre = None, seed = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn set_doubling(
+        &self,
+        py: Python<'_>,
+        layers: Option<u8>,
+        spacing: Option<f64>,
+        detune_cents: Option<f64>,
+        jitter_ms: Option<f64>,
+        timbre: Option<f64>,
+        seed: Option<u64>,
+    ) -> PyResult<()> {
+        let doc = self.project.borrow(py).doc()?;
+        let mut d = doc
+            .track(self.id)
+            .ok_or_else(|| CantorError::new_err("track no longer exists"))?
+            .doubling
+            .clone();
+        if let Some(v) = layers {
+            d.layers = v;
+        }
+        if let Some(v) = spacing {
+            d.spacing = v;
+        }
+        if let Some(v) = detune_cents {
+            d.detune_cents = v;
+        }
+        if let Some(v) = jitter_ms {
+            d.jitter_ms = v;
+        }
+        if let Some(v) = timbre {
+            d.timbre = v;
+        }
+        if let Some(v) = seed {
+            d.seed = v;
+        }
+        self.project.borrow(py).submit(Op::SetTrack {
+            id: self.id,
+            patch: cantor_core::TrackPatch {
+                doubling: Some(d),
                 ..Default::default()
             },
         })

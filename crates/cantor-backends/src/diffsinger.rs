@@ -5,8 +5,10 @@
 //! deployment exporters; see docs/decisions/0011-diffsinger-backend.md.
 
 use crate::onnx::{Model, scalar_f32, scalar_i64, tensor_bool, tensor_f32, tensor_i64};
-use cantor_core::{Diagnostic, EntityRef, PhonemeAlphabet};
+use cantor_core::{Diagnostic, EntityRef, PhonemeAlphabet, PhonemeOverride};
 use cantor_phon::place::{GroupPhone, fit_group, to_frames};
+use cantor_phon::wasm::{PluginNote, PluginSet};
+use cantor_phon::xsampa::XSampaMap;
 use cantor_phon::{Dictionary, Lyric, PhoneKind, parse_lyric};
 use cantor_render::backend::{
     AcousticInput, Backend, BackendError, Grid, Phone, PhraseInput, Prediction,
@@ -15,7 +17,7 @@ use cantor_render::phrase::PhraseNote;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Noise samples per frame reserved for each diffusion model. The graphs
 /// take the first `size(like)` of them.
@@ -232,7 +234,11 @@ pub struct DiffSinger {
     variance: Option<VarianceStage>,
     dict_dir: PathBuf,
     dicts: Mutex<HashMap<String, &'static Dictionary>>,
+    xsampa_maps: Mutex<HashMap<String, Option<Arc<XSampaMap>>>>,
     params: Vec<&'static str>,
+    phonemizers: Arc<PluginSet>,
+    /// The voicebank's version, before plugin fingerprints are appended.
+    base_version: String,
 }
 
 fn read_text(path: &Path) -> Result<String, BackendError> {
@@ -392,6 +398,7 @@ impl DiffSinger {
         Ok(Self {
             root: voicebank.to_path_buf(),
             id: format!("diffsinger/{id}"),
+            base_version: version.clone(),
             version,
             grid: Grid {
                 sample_rate: acoustic_cfg.sample_rate,
@@ -408,8 +415,25 @@ impl DiffSinger {
             variance,
             dict_dir,
             dicts: Mutex::new(HashMap::new()),
+            xsampa_maps: Mutex::new(HashMap::new()),
             params,
+            phonemizers: Arc::new(PluginSet::default()),
         })
+    }
+
+    /// Phonemizes notes in the languages these WASM plugins handle with the
+    /// plugins instead of the voicebank's dictionaries. The plugins'
+    /// fingerprints become part of the backend version, so cached renders
+    /// made with other phonemizers are not reused.
+    pub fn with_phonemizers(mut self, set: Arc<PluginSet>) -> Self {
+        self.version = if set.is_empty() {
+            self.base_version.clone()
+        } else {
+            format!("{}+{}", self.base_version, set.fingerprint())
+        };
+        self.phonemizers = set;
+        self.xsampa_maps.lock().expect("X-SAMPA lock").clear();
+        self
     }
 
     /// The voicebank directory.
@@ -433,6 +457,20 @@ impl DiffSinger {
     /// `None` for continuations, rests and unknown lyrics.
     pub fn phonemes_for(&self, lyric: &str, lang: Option<&str>) -> Option<Vec<String>> {
         let lang = lang.unwrap_or(&self.default_lang);
+        if let Some(p) = self.phonemizers.for_lang(lang) {
+            let note = PluginNote {
+                lyric: lyric.to_owned(),
+                lang: lang.to_owned(),
+                start: 0.0,
+                end: 1.0,
+                pitch_cents: 6000.0,
+            };
+            if let Some(r) = p.phonemize(&[note]).ok().and_then(|mut r| r.pop())
+                && !r.phonemes.is_empty()
+            {
+                return Some(r.phonemes);
+            }
+        }
         match parse_lyric(lyric) {
             Lyric::Syllable(g) => self.dict(lang).ok()?.lookup(&g).map(<[String]>::to_vec),
             Lyric::Breath => Some(vec!["AP".into()]),
@@ -464,6 +502,68 @@ impl DiffSinger {
     fn frame_secs(&self) -> f64 {
         self.grid.frame_secs()
     }
+
+    /// The X-SAMPA map for a language: a phonemizer plugin's declared map
+    /// when a plugin handles the language, else the voicebank's
+    /// `xsampa-<lang>.txt` if it ships one, else the built-in map.
+    pub fn xsampa(&self, lang: &str) -> Option<Arc<XSampaMap>> {
+        let mut maps = self.xsampa_maps.lock().expect("X-SAMPA lock");
+        if let Some(m) = maps.get(lang) {
+            return m.clone();
+        }
+        let builtin = || XSampaMap::builtin(lang).cloned().map(Arc::new);
+        let plugin = self
+            .phonemizers
+            .for_lang(lang)
+            .and_then(|p| p.inventory(lang).ok())
+            .map(|inv| Arc::new(inv.xsampa().clone()))
+            .filter(|m| !m.is_empty());
+        let path = self.dict_dir.join(format!("xsampa-{lang}.txt"));
+        let m = plugin.or_else(|| match std::fs::read_to_string(&path) {
+            Ok(text) => match XSampaMap::parse(&text) {
+                Ok(m) => Some(Arc::new(m)),
+                Err(e) => {
+                    tracing::warn!("{}: {e}; using the built-in map", path.display());
+                    builtin()
+                }
+            },
+            Err(_) => builtin(),
+        });
+        maps.insert(lang.to_owned(), m.clone());
+        m
+    }
+
+    /// Voicebank tokens for a note's phoneme overrides, translating X-SAMPA
+    /// symbols through the language's map.
+    fn override_phones(
+        &self,
+        ovr: &[PhonemeOverride],
+        lang: &str,
+    ) -> Result<Vec<(String, Option<f64>)>, String> {
+        let map = self.xsampa(lang);
+        ovr.iter()
+            .map(|p| {
+                let native = match p.alphabet {
+                    PhonemeAlphabet::Native => p.symbol.as_str(),
+                    PhonemeAlphabet::XSampa if self.acoustic_vocab.token(&p.symbol).is_some() => {
+                        // Specials such as SP and AP are shared by every alphabet.
+                        p.symbol.as_str()
+                    }
+                    PhonemeAlphabet::XSampa => map
+                        .as_deref()
+                        .ok_or_else(|| format!("no X-SAMPA map for language `{lang}`"))?
+                        .to_native(&p.symbol)
+                        .ok_or_else(|| format!("X-SAMPA `{}` has no {lang} phoneme", p.symbol))?,
+                };
+                let sym = if self.acoustic_vocab.token(native).is_some() {
+                    native.to_owned()
+                } else {
+                    format!("{lang}/{native}")
+                };
+                Ok((sym, p.length_ms.map(|ms| ms / 1000.0)))
+            })
+            .collect()
+    }
 }
 
 /// A syllable: one sung note (with any `+` continuation notes merged in).
@@ -482,56 +582,63 @@ impl DiffSinger {
         notes: &[PhraseNote],
         diags: &mut Vec<Diagnostic>,
     ) -> Result<Vec<Syllable>, BackendError> {
-        let mut out: Vec<Syllable> = Vec::new();
-        for n in notes {
-            let lang = n
-                .lang
+        let lang_of = |n: &PhraseNote| -> String {
+            n.lang
                 .as_ref()
-                .map_or(self.default_lang.as_str(), |l| l.0.as_str());
+                .map_or(self.default_lang.clone(), |l| l.0.clone())
+        };
+        let plugged = self.plugin_phonemes(notes, &lang_of, diags);
+        let mut out: Vec<Syllable> = Vec::new();
+        for (i, n) in notes.iter().enumerate() {
+            let lang = lang_of(n);
+            let lang = lang.as_str();
             let target = Some(EntityRef::Note { id: n.id });
-            let phones: Vec<(String, Option<f64>)> = match (&n.phonemes, parse_lyric(&n.lyric)) {
+            let overrides = match &n.phonemes {
+                Some(ovr) => match self.override_phones(ovr, lang) {
+                    Ok(v) => Some(v),
+                    Err(msg) => {
+                        diags.push(Diagnostic::warning(
+                            "phon.xsampa_unknown",
+                            format!("{msg}; the lyric is used instead"),
+                            target.clone(),
+                        ));
+                        None
+                    }
+                },
+                None => None,
+            };
+            // Phonemes from a plugin, with the plugin's vowel/consonant kinds.
+            let mut plugin_kinds: Option<Vec<PhoneKind>> = None;
+            let phones: Vec<(String, Option<f64>)> = match (overrides, parse_lyric(&n.lyric)) {
                 (_, Lyric::Continue) if !out.is_empty() => {
                     let last = out.last_mut().expect("non-empty");
                     last.end = last.end.max(n.end_sec);
                     continue;
                 }
-                (Some(ovr), _) if ovr.iter().all(|p| p.alphabet == PhonemeAlphabet::Native) => ovr
-                    .iter()
-                    .map(|p| {
-                        let sym = if self.acoustic_vocab.token(&p.symbol).is_some() {
-                            p.symbol.clone()
-                        } else {
-                            format!("{lang}/{}", p.symbol)
-                        };
-                        (sym, p.length_ms.map(|ms| ms / 1000.0))
-                    })
-                    .collect(),
-                (ovr, lyric) => {
-                    if ovr.is_some() {
-                        diags.push(Diagnostic::warning(
-                            "phon.xsampa_unsupported",
-                            "X-SAMPA phoneme overrides arrive in M5; the lyric is used instead",
-                            target.clone(),
-                        ));
-                    }
-                    match lyric {
-                        Lyric::Rest | Lyric::Continue => vec![("SP".into(), None)],
-                        Lyric::Breath => vec![("AP".into(), None)],
-                        Lyric::Syllable(g) => {
-                            match self.dict(lang)?.lookup(&g) {
-                                Some(ph) => ph.iter().map(|p| (p.clone(), None)).collect(),
-                                None => {
-                                    diags.push(Diagnostic::warning(
-                                    "phon.unknown_lyric",
-                                    format!("`{}` is not in the {lang} dictionary; the note is silent", n.lyric),
-                                    target.clone(),
-                                ));
-                                    vec![("SP".into(), None)]
-                                }
-                            }
-                        }
-                    }
+                (Some(phones), _) => phones,
+                (None, _) if plugged.contains_key(&i) => {
+                    let (phones, kinds) = plugged[&i].clone();
+                    plugin_kinds = Some(kinds);
+                    phones
                 }
+                (None, lyric) => match lyric {
+                    Lyric::Rest | Lyric::Continue => vec![("SP".into(), None)],
+                    Lyric::Breath => vec![("AP".into(), None)],
+                    Lyric::Syllable(g) => match self.dict(lang)?.lookup(&g) {
+                        Some(ph) => ph.iter().map(|p| (p.clone(), None)).collect(),
+                        None => {
+                            diags.push(Diagnostic::warning(
+                                "phon.unknown_lyric",
+                                format!(
+                                    "`{}` is not in the {lang} dictionary; the note is silent",
+                                    n.lyric
+                                ),
+                                target.clone(),
+                            ));
+                            vec![("SP".into(), None)]
+                        }
+                    },
+                },
             };
             for (p, _) in &phones {
                 if self.acoustic_vocab.token(p).is_none() {
@@ -544,7 +651,11 @@ impl DiffSinger {
             let dict = self.dict(lang)?;
             let first_vowel = phones
                 .iter()
-                .position(|(p, _)| dict.kind(p) == PhoneKind::Vowel || p == "SP" || p == "AP")
+                .enumerate()
+                .position(|(j, (p, _))| {
+                    let kind = plugin_kinds.as_ref().map_or(dict.kind(p), |k| k[j]);
+                    kind == PhoneKind::Vowel || p == "SP" || p == "AP"
+                })
                 .unwrap_or(0);
             let (lead, nucleus) = phones.split_at(first_vowel);
             out.push(Syllable {
@@ -556,6 +667,112 @@ impl DiffSinger {
             });
         }
         Ok(out)
+    }
+
+    /// Phonemes from WASM phonemizer plugins for the notes whose language a
+    /// plugin handles, as voicebank tokens with the plugin's phoneme kinds.
+    /// Notes the plugin leaves empty (rests, continuations, unknown words)
+    /// and notes whose symbols the voicebank lacks are left out, so the
+    /// dictionary handles them; problems become diagnostics.
+    #[allow(clippy::type_complexity)]
+    fn plugin_phonemes(
+        &self,
+        notes: &[PhraseNote],
+        lang_of: &dyn Fn(&PhraseNote) -> String,
+        diags: &mut Vec<Diagnostic>,
+    ) -> HashMap<usize, (Vec<(String, Option<f64>)>, Vec<PhoneKind>)> {
+        let mut out = HashMap::new();
+        if self.phonemizers.is_empty() || notes.is_empty() {
+            return out;
+        }
+        let t0 = notes[0].start_sec;
+        let mut by_lang: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (i, n) in notes.iter().enumerate() {
+            by_lang.entry(lang_of(n)).or_default().push(i);
+        }
+        for (lang, idx) in by_lang {
+            let Some(plugin) = self.phonemizers.for_lang(&lang) else {
+                continue;
+            };
+            let input: Vec<PluginNote> = idx
+                .iter()
+                .map(|&i| {
+                    let n = &notes[i];
+                    PluginNote {
+                        lyric: n.lyric.clone(),
+                        lang: lang.clone(),
+                        start: n.start_sec - t0,
+                        end: n.end_sec - t0,
+                        pitch_cents: n.pitch_cents,
+                    }
+                })
+                .collect();
+            let warn = |code: &str, msg: String, id| {
+                Diagnostic::warning(code, msg, Some(EntityRef::Note { id }))
+            };
+            let (results, inventory) = match (plugin.phonemize(&input), plugin.inventory(&lang)) {
+                (Ok(r), Ok(inv)) => (r, inv),
+                (Err(e), _) | (_, Err(e)) => {
+                    diags.push(warn(
+                        "phon.plugin_failed",
+                        format!("{e}; the dictionary is used instead"),
+                        notes[idx[0]].id,
+                    ));
+                    continue;
+                }
+            };
+            for (&i, r) in idx.iter().zip(results) {
+                let id = notes[i].id;
+                for w in r.warnings {
+                    diags.push(warn(
+                        "phon.plugin_warning",
+                        format!("{}: {w}", plugin.name()),
+                        id,
+                    ));
+                }
+                if r.phonemes.is_empty() {
+                    continue;
+                }
+                let tokens: Vec<Option<String>> = r
+                    .phonemes
+                    .iter()
+                    .map(|p| self.token_for(p, &lang))
+                    .collect();
+                if let Some(bad) = r.phonemes.iter().zip(&tokens).find(|(_, t)| t.is_none()) {
+                    diags.push(warn(
+                        "phon.plugin_symbol_unknown",
+                        format!(
+                            "{} produced `{}`, which the voicebank does not have; the \
+                             dictionary is used instead",
+                            plugin.name(),
+                            bad.0
+                        ),
+                        id,
+                    ));
+                    continue;
+                }
+                let kinds = r.phonemes.iter().map(|p| inventory.kind(p)).collect();
+                let phones = tokens
+                    .into_iter()
+                    .map(|t| (t.expect("checked above"), None))
+                    .collect();
+                out.insert(i, (phones, kinds));
+            }
+        }
+        out
+    }
+
+    /// The voicebank token for a native symbol: the symbol itself, or the
+    /// language-prefixed form multilingual voicebanks use.
+    fn token_for(&self, symbol: &str, lang: &str) -> Option<String> {
+        if self.acoustic_vocab.token(symbol).is_some() {
+            return Some(symbol.to_owned());
+        }
+        let prefixed = format!("{lang}/{symbol}");
+        self.acoustic_vocab
+            .token(&prefixed)
+            .is_some()
+            .then_some(prefixed)
     }
 }
 

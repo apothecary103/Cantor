@@ -1,0 +1,75 @@
+package cantor:plugin@0.1.0;
+
+/// Types shared by phonemizer plugins and the Cantor host.
+interface phonemizer-types {
+    /// What kind of sound a phoneme is.
+    enum phone-kind {
+        /// Syllable nuclei: vowels, and silence or breath symbols. The first
+        /// vowel of a note lands on the note's onset.
+        vowel,
+        /// Everything else. Consonants before a note's first vowel are
+        /// placed before its onset.
+        consonant,
+    }
+
+    /// A phoneme the plugin can produce.
+    record phone-info {
+        /// Native symbol, as the voicebank spells it.
+        symbol: string,
+        /// Vowel or consonant.
+        kind: phone-kind,
+        /// X-SAMPA spelling. Declared spellings must be unique per language.
+        xsampa: option<string>,
+    }
+
+    /// Describes a plugin.
+    record info {
+        /// Display name.
+        name: string,
+        /// Plugin version. Part of render cache keys.
+        version: string,
+        /// Plugin API version; must equal the host's (1).
+        api-version: u32,
+        /// BCP 47 language tags the plugin phonemizes.
+        languages: list<string>,
+    }
+
+    /// One note of a phrase, in time order.
+    record note {
+        /// Lyric as typed. `+` continues the previous note; `-` marks
+        /// syllables of one word; `SP`, `R` and the empty string are rests;
+        /// `AP` and `br` are breaths.
+        lyric: string,
+        /// Language tag (the singer's default when the note has none).
+        lang: string,
+        /// Onset in seconds from the phrase start.
+        start: f64,
+        /// End in seconds from the phrase start.
+        end: f64,
+        /// Pitch in cents (MIDI note number × 100).
+        pitch-cents: f64,
+    }
+
+    /// The phonemes of one note.
+    record note-phonemes {
+        /// Native symbols in order. An empty list lets the host decide
+        /// (continuation, rest or breath, from the lyric).
+        phonemes: list<string>,
+        /// Problems the host should report, such as an unknown word.
+        warnings: list<string>,
+    }
+}
+
+/// A phonemizer: lyrics in, native phonemes out. Plugins run sandboxed with
+/// no filesystem, network, environment or wall clock, and must be pure: the
+/// same notes always give the same phonemes.
+world phonemizer {
+    use phonemizer-types.{info, phone-info, note, note-phonemes};
+
+    /// Describes the plugin.
+    export info: func() -> info;
+    /// The phoneme inventory for a language, with X-SAMPA spellings.
+    export inventory: func(lang: string) -> list<phone-info>;
+    /// Phonemizes a phrase: one result per input note, in order.
+    export phonemize: func(notes: list<note>) -> result<list<note-phonemes>, string>;
+}

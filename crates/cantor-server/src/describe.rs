@@ -1,11 +1,9 @@
 //! Compact, token-efficient text descriptions of projects for agents.
 
-use cantor_backends::DiffSinger;
 use cantor_core::{Curve, PhraseId, Project, Revision, TickRange, Track, TrackId, phrase_spans};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
-use std::sync::Arc;
 
 /// How much a range description includes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -20,7 +18,7 @@ pub enum Detail {
     Full,
 }
 
-type Phonemizer<'a> = &'a dyn Fn(&Track) -> Option<Arc<DiffSinger>>;
+type Phonemizer<'a> = &'a dyn Fn(&Track) -> Option<crate::engine::Voice>;
 
 const NAMES: [&str; 12] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",

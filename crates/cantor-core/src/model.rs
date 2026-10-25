@@ -222,6 +222,8 @@ pub struct Doubling {
     pub detune_cents: f64,
     /// Timing variation between layers in milliseconds.
     pub jitter_ms: f64,
+    /// Timbre (formant) variation between layers, 0 … 1.
+    pub timbre: f64,
     /// Seed for the variations.
     pub seed: u64,
 }
@@ -233,6 +235,7 @@ impl Default for Doubling {
             spacing: 0.5,
             detune_cents: 8.0,
             jitter_ms: 12.0,
+            timbre: 0.5,
             seed: 0,
         }
     }
@@ -927,23 +930,24 @@ pub(crate) fn validate_track_settings(t: &Track) -> Vec<String> {
     }
     let d = &t.doubling;
     if !(1..=16).contains(&d.layers)
-        || ![d.spacing, d.detune_cents, d.jitter_ms]
-            .iter()
-            .all(|x| x.is_finite())
+        || !(0.0..=1.0).contains(&d.spacing)
+        || !(0.0..=100.0).contains(&d.detune_cents)
+        || !(0.0..=100.0).contains(&d.jitter_ms)
+        || !(0.0..=1.0).contains(&d.timbre)
     {
         out.push(format!(
-            "{} has invalid doubling (layers must be 1..=16)",
+            "{} has invalid doubling (layers 1..=16, spacing and timbre 0..=1, \
+             detune_cents and jitter_ms 0..=100)",
             t.id
         ));
     }
     if t.voice_mix.iter().any(|v| !(0.0..=1.0).contains(&v.weight)) {
         out.push(format!("{} has a voice-mix weight outside 0..=1", t.id));
     }
-    if t.effects
-        .iter()
-        .any(|e| e.params.values().any(|x| !x.is_finite()))
-    {
-        out.push(format!("{} has a non-finite effect parameter", t.id));
+    for (i, e) in t.effects.iter().enumerate() {
+        for issue in e.issues() {
+            out.push(format!("{} effect {i}: {issue}", t.id));
+        }
     }
     out
 }

@@ -59,7 +59,7 @@ Done when:
 - [x] MCP conformance tests for 2026-07-28 pass (`cargo xtask
       conformance`: 197 checks, 0 failures, fixture server; 0013)
 
-## M4 Desktop app — done except the Linux benchmark run (local xtask ci green; CI pending)
+## M4 Desktop app — done except the Linux benchmark run (CI green at 6060d75)
 Parts:
 - [x] GPUI app via gpui-kit 0.8.0 (builds on the pinned nightly; 0017)
 - [x] Piano roll: scale-highlighted rows, bars/beats, sections, notes with
@@ -88,6 +88,52 @@ Done when:
       message without Metal (vendored gpui-kit with a `runtime-shaders`
       feature, 0018)
 
+## M5 Breadth — in progress (branch m5-breadth)
+The spec lists M5's parts without "done when" items; these are the
+criteria used here.
+Parts:
+- [x] Effects chain: EQ, compressor, de-esser, reverb with a parameter
+      registry (`schema/effects.json`), rendered per track (0020)
+- [x] Doubling: 2–16 seeded layers re-vocoded from the cached mel, with
+      pitch, timing and formant variation and stereo spread (0020)
+- [x] X-SAMPA input with per-language maps declared by phonemizers (0021)
+- [x] WASM phonemizer host (wasmtime 50, WASI p2, sandboxed, fuel-limited),
+      guest SDK (stable) and template (Japanese kana/romaji) (0019)
+- [x] UTAU concatenative backend (oto.ini, RMVPE + WORLD via world-rs,
+      equal-power crossfades) with a generated CC0 test voicebank (0022)
+- [x] svs.io adapter: ZMTP 3.0 REQ client, op-graph planning, WORLD-feature
+      and audio paths; Python reference backend (0023)
+- [x] Multi-singer projects (a backend per singer), `cantor analyze`, and
+      `cantor render` through the engine (0024)
+
+Done when:
+- [x] Effects: EQ, compressor and de-esser meet their static curves within
+      0.5–1 dB, reverb tails decay and are deterministic, disabled slots are
+      exact bypasses (`cantor-render` fx tests, `render_trace.rs`)
+- [x] Unknown or out-of-range effect parameters are rejected with a
+      diagnostic (`render_trace.rs`, Python `test_api.py`)
+- [x] Doubling renders deterministic stereo layers from the cached mel
+      (no acoustic-model runs) and turning it off restores the dry render
+      bit for bit (`render_trace.rs`)
+- [x] X-SAMPA overrides render bit-identical audio to the equivalent native
+      phonemes with a real voicebank; unknown symbols are diagnostics
+      (`cantor-backends/tests/diffsinger.rs`)
+- [x] A phonemizer built from the template on stable Rust loads in the host;
+      a hostile plugin cannot see files, environment or time, and runaway
+      loops fail on fuel without hanging (`cantor-phon/tests/wasm_plugins.rs`,
+      CI stable job)
+- [x] With the template plugin installed, kana lyrics render the same audio
+      as the dictionary's romaji (`cantor-backends/tests/phonemizer_plugin.rs`)
+- [x] A UTAU voicebank renders a melody within 20 cents p95 of the score
+      and vowel onsets within 60 ms, deterministically, with the vocoder
+      fast path for pitch-only edits and formant-warped doubling
+      (`cantor-backends/tests/utau.rs`)
+- [x] The svs.io adapter drives a reference backend over real ZeroMQ
+      (pyzmq) end to end, within 20 cents p95, on both the WORLD-feature
+      and the audio path (`cantor-backends/tests/svsio.rs`)
+- [x] One render call mixes a DiffSinger and a UTAU track
+      (`cantor-server/tests/multi_singer.rs`, `cantor-cli/tests/render_cli.rs`)
+
 ## Open items
 - Confirm with OpenVPI that the in-memory noise rewrite fits the Qixuan
   terms of use (0010).
@@ -101,7 +147,6 @@ Done when:
   converted (0005).
 - TSan crate list holds only cantor-core until cantor-audio exists.
 - abi3t (free-threaded) Python wheels need Python 3.15 in the flake (0016).
-- Multi-singer projects render one singer per call (0015).
 - macOS wheels built in the Nix shell link Nix's libiconv; release wheels
   must be built outside Nix like release app builds.
 - gpui-kit is vendored to make runtime shaders optional (0018); drop the

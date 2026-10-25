@@ -1,0 +1,25 @@
+# A Cantor phonemizer plugin. Copy this directory into a repository of
+# its own, rename the package, and point `cantor-plugin-sdk` at a release
+# (`cantor-plugin-sdk = { git = "https://github.com/apothecary103/Cantor", tag = "…" }`).
+[package]
+name = "cantor-phonemizer-ja-kana"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+rust-version = "1.88"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cantor-plugin-sdk = { path = "../../crates/cantor-plugin-sdk" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+
+# Standalone: not part of the Cantor workspace.
+[workspace]

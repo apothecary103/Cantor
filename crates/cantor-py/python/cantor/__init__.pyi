@@ -2,9 +2,16 @@
 
 from os import PathLike
 from types import TracebackType
-from typing import Literal
+from typing import Literal, TypedDict
 
 class CantorError(Exception): ...
+
+class _EffectSpecBase(TypedDict):
+    kind: Literal["eq", "compressor", "de_esser", "reverb"]
+
+class EffectSpec(_EffectSpecBase, total=False):
+    enabled: bool
+    params: dict[str, float]
 
 class Project:
     @property
@@ -74,6 +81,16 @@ class Track:
         pan: float | None = None,
         mute: bool | None = None,
         solo: bool | None = None,
+    ) -> None: ...
+    def set_effects(self, chain: list[EffectSpec]) -> None: ...
+    def set_doubling(
+        self,
+        layers: int | None = None,
+        spacing: float | None = None,
+        detune_cents: float | None = None,
+        jitter_ms: float | None = None,
+        timbre: float | None = None,
+        seed: int | None = None,
     ) -> None: ...
 
 class Note:

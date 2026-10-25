@@ -28,6 +28,7 @@ pub const METHODS: &[&str] = &[
     "describe_range",
     "list_singers",
     "get_singer_schema",
+    "list_phonemizers",
     "apply_ops",
     "retake",
     "select_take",
@@ -227,6 +228,7 @@ pub fn dispatch(engine: &Engine, method: &str, p: Value) -> Result<Value, RpcErr
             )?)
         }
         "list_singers" => to_value(engine.list_singers()),
+        "list_phonemizers" => to_value(engine.list_phonemizers()),
         "get_singer_schema" => to_value(engine.get_singer_schema(&params::<SingerP>(p)?.singer)?),
         "apply_ops" => {
             let a: OpsP = params(p)?;
@@ -413,6 +415,7 @@ mod tests {
         Engine::new(EngineConfig {
             singer_paths: vec![],
             vocoder_paths: vec![],
+            phonemizer_paths: vec![],
             rmvpe: None,
             cache_dir: tmp.join("cache"),
             render_dir: tmp.join("renders"),

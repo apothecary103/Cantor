@@ -3,6 +3,7 @@
 
 use crate::diag::Diagnostic;
 use crate::document::ApplyResult;
+use crate::effects::EffectDescriptor;
 use crate::model::Project;
 use crate::op::Op;
 use crate::params::ParamDescriptor;
@@ -46,6 +47,10 @@ pub fn registry() -> Vec<SchemaEntry> {
         SchemaEntry {
             name: "param-descriptor",
             schema: schema_for::<ParamDescriptor>(),
+        },
+        SchemaEntry {
+            name: "effect-descriptor",
+            schema: schema_for::<EffectDescriptor>(),
         },
     ]
 }

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EffectDescriptor",
+  "description": "Describes one built-in effect.",
+  "type": "object",
+  "properties": {
+    "description": {
+      "description": "What the effect does.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "The effect.",
+      "$ref": "#/$defs/EffectKind"
+    },
+    "name": {
+      "description": "Human-readable name.",
+      "type": "string"
+    },
+    "params": {
+      "description": "Its parameters.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EffectParam"
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "description",
+    "params"
+  ],
+  "$defs": {
+    "EffectKind": {
+      "description": "Built-in effects.",
+      "type": "string",
+      "enum": [
+        "eq",
+        "compressor",
+        "de_esser",
+        "reverb"
+      ]
+    },
+    "EffectParam": {
+      "description": "Describes one effect parameter.",
+      "type": "object",
+      "properties": {
+        "default": {
+          "description": "Value when the slot does not set it.",
+          "type": "number",
+          "format": "double"
+        },
+        "description": {
+          "description": "What the parameter controls.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable identifier used in `EffectSlot::params`.",
+          "type": "string"
+        },
+        "max": {
+          "description": "Largest value.",
+          "type": "number",
+          "format": "double"
+        },
+        "min": {
+          "description": "Smallest value.",
+          "type": "number",
+          "format": "double"
+        },
+        "name": {
+          "description": "Human-readable name.",
+          "type": "string"
+        },
+        "unit": {
+          "description": "Unit of the value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "unit",
+        "min",
+        "max",
+        "default",
+        "description"
+      ]
+    }
+  }
+}

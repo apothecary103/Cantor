@@ -19,6 +19,11 @@ serde_json.workspace = true
 serde-saphyr.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+world-rs.workspace = true
+encoding_rs.workspace = true
+rmpv.workspace = true
+hound.workspace = true
+blake3.workspace = true
 
 [lints]
 workspace = true

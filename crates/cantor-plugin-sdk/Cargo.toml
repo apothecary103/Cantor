@@ -7,9 +7,10 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 # Must build on the latest stable Rust; CI checks it with `nix develop .#stable`.
-rust-version = "1.85"
+rust-version = "1.88"
 
 [dependencies]
+wit-bindgen = { version = "=0.63.0", default-features = false, features = ["macros", "realloc", "std"] }
 
 [lints]
 workspace = true

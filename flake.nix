@@ -86,7 +86,9 @@
               rust
               pkg-config
               cmake
-              python3
+              # pyzmq and msgpack run the svs.io reference backend
+              # (tests/svsio, crates/cantor-backends/tests/svsio.rs).
+              (python3.withPackages (ps: [ ps.pyzmq ps.msgpack ]))
               maturin
               wasm-tools
               nixfmt
@@ -122,10 +124,14 @@
           # (cantor-plugin-sdk). CI: `nix develop .#stable --command ...`.
           devShells.stable = pkgs.mkShell {
             nativeBuildInputs = [
-              (fenix.packages.${system}.stable.withComponents [
-                "cargo"
-                "rustc"
-                "rust-std"
+              (fenix.packages.${system}.combine [
+                (fenix.packages.${system}.stable.withComponents [
+                  "cargo"
+                  "rustc"
+                  "rust-std"
+                ])
+                # Phonemizer plugins are WASI p2 components.
+                fenix.packages.${system}.targets.wasm32-wasip2.stable.rust-std
               ])
             ];
             shellHook = ''

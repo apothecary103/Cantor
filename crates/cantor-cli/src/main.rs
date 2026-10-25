@@ -29,7 +29,9 @@ enum Command {
         /// Render quality.
         #[arg(long, value_enum, default_value_t = QualityArg::Final)]
         quality: QualityArg,
-        /// Voicebank directory (default: the track's singer under $CANTOR_SINGERS).
+        /// DiffSinger voicebank directory. Without it the engine renders
+        /// every track with its own singer from $CANTOR_SINGERS (DiffSinger,
+        /// UTAU or svs.io), with analysis when $CANTOR_RMVPE is set.
         #[arg(long)]
         voicebank: Option<PathBuf>,
         /// Vocoder directory (default: the voicebank's vocoder under $CANTOR_VOCODERS).
@@ -39,6 +41,19 @@ enum Command {
         #[arg(long)]
         cache: Option<PathBuf>,
         /// Print the render report (hash, trace, diagnostics) as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render a project and print the analysis report (pitch, timing,
+    /// loudness, artifacts). Singers come from $CANTOR_SINGERS; pitch
+    /// analysis needs $CANTOR_RMVPE.
+    Analyze {
+        /// The .cantor project.
+        project: PathBuf,
+        /// Render quality.
+        #[arg(long, value_enum, default_value_t = QualityArg::Preview)]
+        quality: QualityArg,
+        /// Print the full report as JSON instead of a summary.
         #[arg(long)]
         json: bool,
     },
@@ -101,7 +116,17 @@ fn run(cli: Cli) -> Result<(), String> {
             vocoder,
             cache,
             json,
-        } => render(&project, &output, quality, voicebank, vocoder, cache, json),
+        } => match (voicebank, vocoder) {
+            (None, None) => engine_render(&project, Some(&output), quality, cache, json),
+            (voicebank, vocoder) => {
+                render(&project, &output, quality, voicebank, vocoder, cache, json)
+            }
+        },
+        Command::Analyze {
+            project,
+            quality,
+            json,
+        } => engine_render(&project, None, quality, None, json),
         Command::Import { input, output } => {
             let imported = cantor_io::import::import_path(&input).map_err(|e| e.to_string())?;
             print_diagnostics(&imported.diagnostics);
@@ -227,6 +252,79 @@ fn render(
             output.display(),
             &out.audio_hash.hex()[..16]
         );
+    }
+    Ok(())
+}
+
+/// Renders through the engine (every backend, every singer of the
+/// project) and writes the WAV to `output`, or only reports when `output`
+/// is `None` (`cantor analyze`).
+fn engine_render(
+    project: &Path,
+    output: Option<&Path>,
+    quality: QualityArg,
+    cache: Option<PathBuf>,
+    json: bool,
+) -> Result<(), String> {
+    let mut config = cantor_server::EngineConfig::from_env();
+    if let Some(c) = cache {
+        config.cache_dir = c;
+    }
+    let engine = cantor_server::Engine::new(config);
+    let info = engine.open_project(project).map_err(|e| e.to_string())?;
+    let q = match quality {
+        QualityArg::Preview => Quality::Preview,
+        QualityArg::Final => Quality::Final,
+    };
+    let r = engine
+        .render(&info.project_id, None, q)
+        .map_err(|e| e.to_string())?;
+    if let Some(out) = output {
+        let wav = r.audio_uri.trim_start_matches("file://");
+        std::fs::copy(wav, out).map_err(|e| format!("{}: {e}", out.display()))?;
+    }
+    if json {
+        let mut v = serde_json::to_value(&r).expect("reports serialize");
+        if let Some(out) = output {
+            v["output"] = serde_json::json!(out);
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&v).expect("reports serialize")
+        );
+        return Ok(());
+    }
+    print_diagnostics(&r.diagnostics);
+    if let Some(out) = output {
+        eprintln!(
+            "rendered {} phrases to {} (audio hash {})",
+            r.trace.phrases.len(),
+            out.display(),
+            &r.audio_hash[..16]
+        );
+    }
+    match &r.analysis {
+        Some(a) => {
+            for t in &a.tracks {
+                let fmt = |v: Option<f64>, unit: &str| {
+                    v.map_or("n/a".to_owned(), |v| format!("{v:.1} {unit}"))
+                };
+                println!(
+                    "{}: pitch error mean {}, p95 {}; onset p95 {}",
+                    t.track,
+                    fmt(t.pitch.mean_cents, "cents"),
+                    fmt(t.pitch.p95_cents, "cents"),
+                    fmt(t.timing.p95_abs_ms, "ms"),
+                );
+            }
+            println!(
+                "loudness {:.1} LUFS integrated, true peak {:.1} dBTP; {} artifact(s)",
+                a.loudness.integrated_lufs.unwrap_or(f64::NEG_INFINITY),
+                a.loudness.true_peak_dbtp.unwrap_or(f64::NEG_INFINITY),
+                a.artifacts.len()
+            );
+        }
+        None => println!("no analysis (set CANTOR_RMVPE for pitch and timing)"),
     }
     Ok(())
 }

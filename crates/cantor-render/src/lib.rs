@@ -5,6 +5,8 @@
 
 pub mod backend;
 pub mod cache;
+pub mod double;
+pub mod fx;
 pub mod key;
 pub mod mix;
 pub mod phrase;

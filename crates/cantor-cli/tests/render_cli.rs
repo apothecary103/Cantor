@@ -103,3 +103,90 @@ fn ops_apply_edits_a_project() {
     assert!(!bad.status.success());
     assert!(String::from_utf8_lossy(&bad.stdout).contains("note.not_found"));
 }
+
+/// Without `--voicebank`, `render` and `analyze` go through the engine:
+/// any backend (here UTAU, with a generated voicebank) from $CANTOR_SINGERS.
+#[test]
+fn engine_render_and_analyze_with_a_utau_singer() {
+    use cantor_core::*;
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("engine-cli");
+    let _ = std::fs::remove_dir_all(&dir);
+    let singers = dir.join("singers");
+    cantor_fixtures::utau::write_synthetic_voicebank(&singers.join("synthetic-cv")).unwrap();
+    let rmvpe = cantor_fixtures::ensure(&cantor_fixtures::RMVPE).unwrap();
+
+    let mut p = Project::new();
+    let notes = ["ka", "sa", "na"]
+        .iter()
+        .enumerate()
+        .map(|(i, l)| Note {
+            id: NoteId(10 + i as u64),
+            start: i as i64 * 1920,
+            length: 1920,
+            pitch_cents: 6000.0 + 200.0 * i as f64,
+            lyric: (*l).into(),
+            lang: None,
+            phonemes: None,
+            expr: NoteExpr::default(),
+            modes: VocalModes::default(),
+        })
+        .collect();
+    p.tracks.push(Track {
+        id: TrackId(1),
+        name: "Lead".into(),
+        singer: SingerRef {
+            id: "synthetic-cv".into(),
+            version: None,
+        },
+        backend: BackendRef("utau".into()),
+        mix: Mix::default(),
+        effects: vec![EffectSlot::new(EffectKind::Reverb)],
+        doubling: Doubling::default(),
+        voice_mix: vec![],
+        curves: Default::default(),
+        parts: vec![Part {
+            id: PartId(2),
+            name: "A".into(),
+            start: 0,
+            length: 4 * 1920,
+            notes,
+        }],
+    });
+    let project = dir.join("song.cantor");
+    cantor_io::project_file::save(&project, &p, cantor_io::project_file::Compression::None)
+        .unwrap();
+    let env = |c: &mut Command| {
+        c.env("CANTOR_SINGERS", &singers)
+            .env("CANTOR_RMVPE", &rmvpe)
+            .env("CANTOR_CACHE", dir.join("cache"));
+    };
+
+    let wav = dir.join("song.wav");
+    let mut render = cantor();
+    env(&mut render);
+    let out = render
+        .args(["render", "--quality", "preview", "--json", "-o"])
+        .arg(&wav)
+        .arg(&project)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["diagnostics"], serde_json::json!([]));
+    assert!(std::fs::metadata(&wav).unwrap().len() > 44_100);
+
+    let mut analyze = cantor();
+    env(&mut analyze);
+    let out = analyze.arg("analyze").arg(&project).output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("p95") && text.contains("LUFS"), "{text}");
+}

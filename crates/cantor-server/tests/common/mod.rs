@@ -15,6 +15,7 @@ pub(crate) fn engine(name: &str) -> Engine {
     Engine::new(EngineConfig {
         singer_paths: vec![vb.parent().unwrap().to_path_buf()],
         vocoder_paths: vec![cantor_fixtures::dir()],
+        phonemizer_paths: vec![],
         rmvpe: Some(rmvpe),
         cache_dir: work.join("cache"),
         render_dir: work.join("renders"),

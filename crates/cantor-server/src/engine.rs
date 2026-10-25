@@ -7,11 +7,16 @@ use crate::singers::{self, SingerInfo, SingerSchema};
 use cantor_analysis::AnalysisReport;
 use cantor_backends::DiffSinger;
 use cantor_backends::rmvpe::Rmvpe;
+use cantor_backends::svsio::{SvsIo, SvsIoConfig};
+use cantor_backends::utau::Utau;
 use cantor_core::{
     ApplyResult, Diagnostic, DocDiff, Document, HistoryNodeId, Op, PhraseId, Project, RetakeDim,
     Revision, TakeId, TickRange, TrackId,
 };
 use cantor_io::project_file::{self, Compression};
+use cantor_phon::wasm::PluginSet;
+use cantor_phon::xsampa::XSampaMap;
+use cantor_render::backend::Backend;
 use cantor_render::cache::DiskCache;
 use cantor_render::render::{Quality, RenderTrace, Renderer};
 use schemars::JsonSchema;
@@ -28,6 +33,8 @@ pub struct EngineConfig {
     pub singer_paths: Vec<PathBuf>,
     /// Directories containing vocoder directories.
     pub vocoder_paths: Vec<PathBuf>,
+    /// Directories containing phonemizer plugins (`*.wasm`).
+    pub phonemizer_paths: Vec<PathBuf>,
     /// RMVPE model for analysis; `None` disables pitch analysis.
     pub rmvpe: Option<PathBuf>,
     /// Render cache.
@@ -37,8 +44,8 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
-    /// From `CANTOR_SINGERS`, `CANTOR_VOCODERS` (path lists), `CANTOR_RMVPE`,
-    /// `CANTOR_CACHE` and `CANTOR_RENDERS`.
+    /// From `CANTOR_SINGERS`, `CANTOR_VOCODERS`, `CANTOR_PHONEMIZER_PATH`
+    /// (path lists), `CANTOR_RMVPE`, `CANTOR_CACHE` and `CANTOR_RENDERS`.
     pub fn from_env() -> Self {
         let paths = |var: &str| {
             std::env::var_os(var)
@@ -51,6 +58,7 @@ impl EngineConfig {
         Self {
             singer_paths: paths("CANTOR_SINGERS"),
             vocoder_paths: paths("CANTOR_VOCODERS"),
+            phonemizer_paths: paths("CANTOR_PHONEMIZER_PATH"),
             rmvpe: std::env::var_os("CANTOR_RMVPE").map(PathBuf::from),
             render_dir: std::env::var_os("CANTOR_RENDERS")
                 .map(PathBuf::from)
@@ -58,6 +66,28 @@ impl EngineConfig {
             cache_dir: base.join("render"),
         }
     }
+}
+
+/// A loaded phonemizer plugin.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PhonemizerInfo {
+    /// Display name.
+    pub name: String,
+    /// Plugin version.
+    pub version: String,
+    /// Languages it phonemizes; it replaces voicebank dictionaries for them.
+    pub languages: Vec<String>,
+    /// The plugin file.
+    pub path: String,
+}
+
+/// Phonemizer plugins and the plugins that failed to load.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PhonemizerList {
+    /// Loaded plugins, in priority order.
+    pub plugins: Vec<PhonemizerInfo>,
+    /// Load errors, one per rejected plugin file.
+    pub errors: Vec<String>,
 }
 
 /// An engine failure. Each maps to a stable code for JSON-RPC and MCP.
@@ -249,13 +279,62 @@ struct RenderRecord {
     summary: RenderSummary,
 }
 
+/// A loaded singer: the backend that sings it.
+#[derive(Clone, Debug)]
+pub enum Voice {
+    /// A DiffSinger voicebank.
+    DiffSinger(Arc<DiffSinger>),
+    /// A UTAU concatenative voicebank.
+    Utau(Arc<Utau>),
+    /// An external svs.io backend.
+    SvsIo(Arc<SvsIo>),
+}
+
+impl Voice {
+    /// The synthesis backend.
+    pub fn backend(&self) -> Arc<dyn Backend> {
+        match self {
+            Voice::DiffSinger(b) => b.clone(),
+            Voice::Utau(b) => b.clone(),
+            Voice::SvsIo(b) => b.clone(),
+        }
+    }
+
+    /// Phonemes (DiffSinger) or the alias (UTAU) a lyric is sung with,
+    /// for descriptions.
+    pub fn phonemes_for(&self, lyric: &str, lang: Option<&str>) -> Option<Vec<String>> {
+        match self {
+            Voice::DiffSinger(b) => b.phonemes_for(lyric, lang),
+            Voice::Utau(u) => u.entry_for(lyric).map(|e| vec![e.alias.clone()]),
+            Voice::SvsIo(_) => None,
+        }
+    }
+
+    /// Languages the voice was trained on (DiffSinger), if known.
+    pub fn languages(&self) -> Vec<String> {
+        match self {
+            Voice::DiffSinger(b) => b.languages(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The X-SAMPA map for a language, if the voice has phonemes.
+    pub fn xsampa(&self, lang: &str) -> Option<Arc<XSampaMap>> {
+        match self {
+            Voice::DiffSinger(b) => b.xsampa(lang),
+            _ => None,
+        }
+    }
+}
+
 /// The Cantor engine.
 pub struct Engine {
     config: EngineConfig,
     projects: Mutex<BTreeMap<String, Arc<Mutex<OpenProject>>>>,
     renders: Mutex<BTreeMap<String, RenderRecord>>,
-    backends: Mutex<HashMap<String, Arc<DiffSinger>>>,
+    voices: Mutex<HashMap<String, Voice>>,
     rmvpe: OnceLock<Option<Arc<Rmvpe>>>,
+    phonemizers: OnceLock<(Arc<PluginSet>, Vec<String>)>,
     next: AtomicU64,
 }
 
@@ -274,8 +353,9 @@ impl Engine {
             config,
             projects: Mutex::new(BTreeMap::new()),
             renders: Mutex::new(BTreeMap::new()),
-            backends: Mutex::new(HashMap::new()),
+            voices: Mutex::new(HashMap::new()),
             rmvpe: OnceLock::new(),
+            phonemizers: OnceLock::new(),
             next: AtomicU64::new(1),
         }
     }
@@ -402,11 +482,11 @@ impl Engine {
     /// Dictionary phonemes for a lyric as `singer` would sing it, if the
     /// singer is installed.
     pub fn phonemes(&self, singer: &str, lyric: &str, lang: Option<&str>) -> Option<Vec<String>> {
-        self.backend_for(singer).ok()?.phonemes_for(lyric, lang)
+        self.voice(singer).ok()?.phonemes_for(lyric, lang)
     }
 
-    fn phonemes_fn(&self, track: &cantor_core::Track) -> Option<Arc<DiffSinger>> {
-        self.backend_for(&track.singer.id).ok()
+    fn phonemes_fn(&self, track: &cantor_core::Track) -> Option<Voice> {
+        self.voice(&track.singer.id).ok()
     }
 
     /// Applies ops atomically (as one batch) if `base_revision` is current.
@@ -552,11 +632,21 @@ impl Engine {
     /// A singer's parameters, languages, modes and licence.
     pub fn get_singer_schema(&self, singer: &str) -> Result<SingerSchema> {
         let (info, _) = self.find_singer(singer)?;
-        let backend = self.backend_for(singer)?;
-        Ok(singers::schema(
-            info,
-            cantor_render::backend::Backend::params(backend.as_ref()),
-        ))
+        let voice = self.voice(singer)?;
+        let backend = voice.backend();
+        let xsampa = voice
+            .languages()
+            .into_iter()
+            .filter_map(|lang| {
+                let map = voice.xsampa(&lang)?;
+                let pairs = map
+                    .pairs()
+                    .map(|(n, x)| (n.to_owned(), x.to_owned()))
+                    .collect();
+                Some((lang, pairs))
+            })
+            .collect();
+        Ok(singers::schema(info, backend.params(), xsampa))
     }
 
     fn find_singer(&self, singer: &str) -> Result<(SingerInfo, PathBuf)> {
@@ -576,21 +666,81 @@ impl Engine {
             })
     }
 
-    fn backend_for(&self, singer: &str) -> Result<Arc<DiffSinger>> {
-        if let Some(b) = self.backends.lock().expect("backends lock").get(singer) {
-            return Ok(b.clone());
+    /// The loaded voice for a singer id, loading it on first use.
+    pub fn voice(&self, singer: &str) -> Result<Voice> {
+        if let Some(v) = self.voices.lock().expect("voices lock").get(singer) {
+            return Ok(v.clone());
         }
         let (info, dir) = self.find_singer(singer)?;
-        let vocoder = find_vocoder(&self.config.vocoder_paths, &info.vocoder)
-            .ok_or_else(|| EngineError::NotFound(format!("vocoder `{}`", info.vocoder)))?;
-        let b = Arc::new(
-            DiffSinger::load(&dir, &vocoder).map_err(|e| EngineError::Render(e.to_string()))?,
-        );
-        self.backends
+        let render_err = |e: cantor_render::backend::BackendError| EngineError::Render(e.0);
+        let voice = match info.backend.as_str() {
+            "utau" => {
+                let f0 = self.analyzer().ok_or_else(|| {
+                    EngineError::Invalid(format!(
+                        "`{singer}` is a UTAU voicebank, which needs RMVPE (CANTOR_RMVPE) to \
+                         analyze its recordings"
+                    ))
+                })?;
+                Voice::Utau(Arc::new(Utau::load(&dir, f0).map_err(render_err)?))
+            }
+            "svsio" => {
+                let path = dir.join("svsio.yaml");
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| EngineError::Io(format!("{}: {e}", path.display())))?;
+                let config: SvsIoConfig = serde_saphyr::from_str(&text)
+                    .map_err(|e| EngineError::Invalid(format!("{}: {e}", path.display())))?;
+                Voice::SvsIo(Arc::new(
+                    SvsIo::connect(singer, &config).map_err(render_err)?,
+                ))
+            }
+            _ => {
+                let vocoder = find_vocoder(&self.config.vocoder_paths, &info.vocoder)
+                    .ok_or_else(|| EngineError::NotFound(format!("vocoder `{}`", info.vocoder)))?;
+                Voice::DiffSinger(Arc::new(
+                    DiffSinger::load(&dir, &vocoder)
+                        .map_err(render_err)?
+                        .with_phonemizers(self.phonemizers().0.clone()),
+                ))
+            }
+        };
+        self.voices
             .lock()
-            .expect("backends lock")
-            .insert(singer.to_owned(), b.clone());
-        Ok(b)
+            .expect("voices lock")
+            .insert(singer.to_owned(), voice.clone());
+        Ok(voice)
+    }
+
+    /// Phonemizer plugins on the configured path, loaded once, with the
+    /// errors of plugins that failed to load.
+    fn phonemizers(&self) -> &(Arc<PluginSet>, Vec<String>) {
+        self.phonemizers.get_or_init(|| {
+            let (set, errors) = PluginSet::scan(&self.config.phonemizer_paths);
+            for e in &errors {
+                tracing::warn!("{e}");
+            }
+            (
+                Arc::new(set),
+                errors.iter().map(|e| e.to_string()).collect(),
+            )
+        })
+    }
+
+    /// Loaded phonemizer plugins and plugin load errors.
+    pub fn list_phonemizers(&self) -> PhonemizerList {
+        let (set, errors) = self.phonemizers();
+        PhonemizerList {
+            plugins: set
+                .plugins()
+                .iter()
+                .map(|p| PhonemizerInfo {
+                    name: p.name().to_owned(),
+                    version: p.version().to_owned(),
+                    languages: p.languages().to_vec(),
+                    path: p.path().display().to_string(),
+                })
+                .collect(),
+            errors: errors.clone(),
+        }
     }
 
     fn analyzer(&self) -> Option<Arc<Rmvpe>> {
@@ -620,20 +770,16 @@ impl Engine {
             .collect();
         singers.sort_unstable();
         singers.dedup();
-        let singer = match singers.as_slice() {
-            [one] => *one,
-            [] => return Err(EngineError::Invalid("the project has no tracks".into())),
-            _ => {
-                return Err(EngineError::Invalid(format!(
-                    "tracks use several singers ({}); render one singer per call for now",
-                    singers.join(", ")
-                )));
-            }
+        let Some(first) = singers.first() else {
+            return Err(EngineError::Invalid("the project has no tracks".into()));
         };
-        let backend = self.backend_for(singer)?;
         let cache = DiskCache::new(&self.config.cache_dir)
             .map_err(|e| EngineError::Io(format!("{}: {e}", self.config.cache_dir.display())))?;
-        let mut renderer = Renderer::new(backend, cache);
+        // Every singer renders with its own backend; tracks are mixed.
+        let mut renderer = Renderer::new(self.voice(first)?.backend(), cache);
+        for singer in &singers[1..] {
+            renderer = renderer.with_singer_backend(singer, self.voice(singer)?.backend());
+        }
         let mut diagnostics = Vec::new();
         match self.analyzer() {
             Some(a) => renderer = renderer.with_analyzer(a),

@@ -10,6 +10,7 @@ mod apply;
 mod curve;
 pub mod diag;
 mod document;
+pub mod effects;
 pub mod history;
 pub mod ids;
 pub mod model;

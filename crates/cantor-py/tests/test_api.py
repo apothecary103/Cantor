@@ -43,6 +43,18 @@ try:
 except ct.CantorError:
     pass
 
+# Effects and doubling are track settings with registry-checked parameters.
+lead.set_effects([
+    {"kind": "eq", "params": {"presence_gain_db": 2.0}},
+    {"kind": "reverb", "params": {"mix": 0.15}},
+])
+lead.set_doubling(layers=2, spacing=0.6)
+try:
+    lead.set_effects([{"kind": "reverb", "params": {"wetness": 1.0}}])
+    raise AssertionError("expected ValueError")
+except ValueError as e:
+    assert "wetness" in str(e)
+
 report = p.render(quality="preview", start=0, end=7680)
 metrics = {m.id: m for m in report.notes}
 assert not math.isnan(metrics[100].pitch_error_p95)
