@@ -190,8 +190,9 @@ fn syllable(consonant: Option<Consonant>, formants: [f64; 3], seed: u64) -> (Vec
                     v * env
                 }
                 Consonant::Nasal { .. } => {
+                    // Nasal murmurs sit well below the vowel (about -14 dB).
                     let env = (u / 0.2).min(1.0);
-                    cons_res.as_mut().expect("nasal resonator").tick(source) * env * 1.5
+                    cons_res.as_mut().expect("nasal resonator").tick(source) * env * 0.3
                 }
                 Consonant::Flap => {
                     let v: f64 = vowel_bank.iter_mut().map(|r| r.tick(source)).sum();

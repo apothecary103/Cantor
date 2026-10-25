@@ -947,18 +947,23 @@ dependencies = [
 name = "cantor-backends"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "cantor-analysis",
  "cantor-core",
  "cantor-fixtures",
  "cantor-phon",
  "cantor-render",
+ "encoding_rs",
+ "hound",
  "ort",
  "realfft",
+ "rmpv",
  "serde",
  "serde-saphyr 2.0.0",
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+ "world-rs",
 ]
 
 [[package]]
@@ -970,6 +975,7 @@ dependencies = [
  "cantor-fixtures",
  "cantor-io",
  "cantor-render",
+ "cantor-server",
  "clap",
  "serde",
  "serde_json",
@@ -1085,8 +1091,10 @@ dependencies = [
  "cantor-io",
  "cantor-phon",
  "cantor-render",
+ "encoding_rs",
  "schemars",
  "serde",
+ "serde-saphyr 2.0.0",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
@@ -6836,6 +6844,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmp"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba8be72d372b2c9b35542551678538b562e7cf86c3315773cae48dfbfe7790c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "rmpv"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a4e1d4b9b938a26d2996af33229f0ca0956c652c1375067f0b45291c1df8417"
+dependencies = [
+ "rmp",
+]
+
+[[package]]
 name = "ropey"
 version = "2.0.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10322,6 +10348,17 @@ dependencies = [
  "serde_json",
  "unicode-ident",
  "wasmparser 0.262.0",
+]
+
+[[package]]
+name = "world-rs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "294e6fd4bc49ee58bfa2f290a3bdf9f2214430708507ce083073f1b665adba0e"
+dependencies = [
+ "num-complex",
+ "realfft",
+ "rustfft",
 ]
 
 [[package]]

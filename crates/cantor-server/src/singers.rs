@@ -75,9 +75,7 @@ pub fn scan(paths: &[PathBuf]) -> Vec<(SingerInfo, PathBuf)> {
         let mut entries: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
         entries.sort();
         for p in entries {
-            if p.join("dsconfig.yaml").is_file()
-                && let Some(info) = describe(&p)
-            {
+            if let Some(info) = describe(&p) {
                 out.push((info, p));
             }
         }
@@ -85,10 +83,11 @@ pub fn scan(paths: &[PathBuf]) -> Vec<(SingerInfo, PathBuf)> {
     out
 }
 
-/// Reads a voicebank's metadata without loading its models.
+/// Reads a voicebank's metadata without loading its models: DiffSinger
+/// (`dsconfig.yaml`) or UTAU (`oto.ini`, at the top or one level down).
 pub fn describe(dir: &Path) -> Option<SingerInfo> {
     let id = dir.file_name()?.to_string_lossy().into_owned();
-    let character = std::fs::read_to_string(dir.join("character.txt")).unwrap_or_default();
+    let character = read_text_any(&dir.join("character.txt"));
     let field = |key: &str| {
         character.lines().find_map(|l| {
             l.trim_start_matches('\u{feff}')
@@ -97,30 +96,98 @@ pub fn describe(dir: &Path) -> Option<SingerInfo> {
                 .filter(|v| !v.is_empty())
         })
     };
-    let dsconfig = std::fs::read_to_string(dir.join("dsconfig.yaml")).ok()?;
-    let value = |key: &str| {
-        dsconfig.lines().find_map(|l| {
-            l.strip_prefix(key)
-                .map(|v| v.trim().trim_matches('"').to_owned())
-        })
-    };
-    let mut languages = Vec::new();
-    if let Some(file) = value("languages:")
-        && let Ok(text) = std::fs::read_to_string(dir.join(file))
-        && let Ok(map) = serde_json::from_str::<std::collections::BTreeMap<String, i64>>(&text)
-    {
-        languages = map.into_keys().collect();
-    }
     let yaml = std::fs::read_to_string(dir.join("character.yaml")).unwrap_or_default();
-    let default_language = if yaml.contains("Japanese") {
-        "ja"
-    } else if yaml.contains("English") {
-        "en"
-    } else {
-        "zh"
+    let license = License {
+        author: field("author="),
+        web: field("web="),
+        terms_files: terms_files(dir),
+        consent_attestation: yaml.contains("consent_attestation"),
+    };
+    let name = field("name=").unwrap_or_else(|| id.clone());
+    if let Ok(dsconfig) = std::fs::read_to_string(dir.join("dsconfig.yaml")) {
+        let value = |key: &str| {
+            dsconfig.lines().find_map(|l| {
+                l.strip_prefix(key)
+                    .map(|v| v.trim().trim_matches('"').to_owned())
+            })
+        };
+        let mut languages = Vec::new();
+        if let Some(file) = value("languages:")
+            && let Ok(text) = std::fs::read_to_string(dir.join(file))
+            && let Ok(map) = serde_json::from_str::<BTreeMap<String, i64>>(&text)
+        {
+            languages = map.into_keys().collect();
+        }
+        let default_language = if yaml.contains("Japanese") {
+            "ja"
+        } else if yaml.contains("English") {
+            "en"
+        } else {
+            "zh"
+        }
+        .to_owned();
+        return Some(SingerInfo {
+            name,
+            id,
+            backend: "diffsinger".into(),
+            languages,
+            default_language,
+            vocoder: value("vocoder:").unwrap_or_default(),
+            license,
+        });
     }
-    .to_owned();
-    let mut terms_files: Vec<String> = std::fs::read_dir(dir)
+    if let Ok(text) = std::fs::read_to_string(dir.join("svsio.yaml")) {
+        let languages: Vec<String> = serde_saphyr::from_str::<SvsIoSinger>(&text)
+            .map(|s| s.languages)
+            .unwrap_or_default();
+        return Some(SingerInfo {
+            name,
+            id,
+            backend: "svsio".into(),
+            default_language: languages.first().cloned().unwrap_or_default(),
+            languages,
+            vocoder: "remote".into(),
+            license,
+        });
+    }
+    if cantor_backends::utau::is_voicebank(dir) {
+        // UTAU banks do not declare a language; nearly all are Japanese.
+        let lang = if yaml.contains("English") { "en" } else { "ja" };
+        return Some(SingerInfo {
+            name,
+            id,
+            backend: "utau".into(),
+            languages: vec![lang.into()],
+            default_language: lang.into(),
+            vocoder: "world".into(),
+            license,
+        });
+    }
+    None
+}
+
+/// The part of `svsio.yaml` the registry reads.
+#[derive(Deserialize)]
+struct SvsIoSinger {
+    #[serde(default)]
+    languages: Vec<String>,
+}
+
+/// Text in UTF-8 or, failing that, Shift-JIS (UTAU's historical encoding).
+/// Empty when the file is missing.
+fn read_text_any(path: &Path) -> String {
+    let Ok(bytes) = std::fs::read(path) else {
+        return String::new();
+    };
+    match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(e) => encoding_rs::SHIFT_JIS.decode(e.as_bytes()).0.into_owned(),
+    }
+}
+
+/// Terms-of-use, licence and readme files in a voicebank.
+fn terms_files(dir: &Path) -> Vec<String> {
+    let mut out: Vec<String> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
@@ -134,24 +201,12 @@ pub fn describe(dir: &Path) -> Option<SingerInfo> {
                 || n.contains("license")
                 || n.contains("readme")
                 || n.contains("规约")
+                || n.contains("規約")
         })
         .map(|p| p.display().to_string())
         .collect();
-    terms_files.sort();
-    Some(SingerInfo {
-        name: field("name=").unwrap_or_else(|| id.clone()),
-        id,
-        backend: "diffsinger".into(),
-        languages,
-        default_language,
-        vocoder: value("vocoder:").unwrap_or_default(),
-        license: License {
-            author: field("author="),
-            web: field("web="),
-            terms_files,
-            consent_attestation: yaml.contains("consent_attestation"),
-        },
-    })
+    out.sort();
+    out
 }
 
 /// The schema of a singer given the parameters its backend honors.

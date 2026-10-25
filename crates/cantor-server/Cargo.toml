@@ -19,6 +19,8 @@ serde_json.workspace = true
 schemars.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+encoding_rs.workspace = true
+serde-saphyr.workspace = true
 tokio.workspace = true
 axum = { workspace = true, features = ["ws"] }
 

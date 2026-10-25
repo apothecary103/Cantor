@@ -126,9 +126,10 @@ pub enum RenderError {
     Analysis(String),
 }
 
-/// Renders projects with one backend and one cache.
+/// Renders projects through one cache, with a backend per singer.
 pub struct Renderer {
     backend: Arc<dyn Backend>,
+    singers: BTreeMap<String, Arc<dyn Backend>>,
     cache: DiskCache,
     analyzer: Option<Arc<dyn F0Extractor>>,
 }
@@ -143,13 +144,27 @@ impl std::fmt::Debug for Renderer {
 }
 
 impl Renderer {
-    /// Creates a renderer.
+    /// Creates a renderer. `backend` sings every track whose singer has no
+    /// backend of its own ([`Renderer::with_singer_backend`]) and sets the
+    /// output sample rate.
     pub fn new(backend: Arc<dyn Backend>, cache: DiskCache) -> Self {
         Self {
             backend,
+            singers: BTreeMap::new(),
             cache,
             analyzer: None,
         }
+    }
+
+    /// Renders tracks whose `singer.id` is `singer` with `backend`.
+    pub fn with_singer_backend(mut self, singer: &str, backend: Arc<dyn Backend>) -> Self {
+        self.singers.insert(singer.to_owned(), backend);
+        self
+    }
+
+    /// The backend that sings a track.
+    fn backend_for(&self, track: &Track) -> &Arc<dyn Backend> {
+        self.singers.get(&track.singer.id).unwrap_or(&self.backend)
     }
 
     /// Adds analysis to every render, extracting pitch with `extractor`.
@@ -188,7 +203,20 @@ impl Renderer {
             if track.mix.mute || (any_solo && !track.mix.solo) {
                 continue;
             }
-            check_track_support(track, self.backend.as_ref(), &mut diagnostics);
+            let b = self.backend_for(track).clone();
+            if b.grid().sample_rate != sr {
+                diagnostics.push(Diagnostic::error(
+                    "render.sample_rate_mismatch",
+                    format!(
+                        "{} renders at {} Hz but the mix is at {sr} Hz; the track is skipped",
+                        b.id(),
+                        b.grid().sample_rate
+                    ),
+                    Some(EntityRef::Track { id: track.id }),
+                ));
+                continue;
+            }
+            check_track_support(track, b.as_ref(), &mut diagnostics);
             let mut phrases = split(project, track, &tempo);
             if let Some(r) = range {
                 phrases.retain(|p| {
@@ -199,8 +227,14 @@ impl Renderer {
             }
             let mut rendered = Vec::with_capacity(phrases.len());
             for phrase in &phrases {
-                let (layers, t0, pt) =
-                    self.render_phrase(track, phrase, &tempo, quality, &mut diagnostics)?;
+                let (layers, t0, pt) = self.render_phrase(
+                    b.as_ref(),
+                    track,
+                    phrase,
+                    &tempo,
+                    quality,
+                    &mut diagnostics,
+                )?;
                 trace.phrases.push(pt);
                 rendered.push((t0, layers, phrase));
             }
@@ -406,13 +440,13 @@ struct LayerAudio {
 impl Renderer {
     fn render_phrase(
         &self,
+        b: &dyn Backend,
         track: &Track,
         phrase: &Phrase,
         tempo: &TempoMap,
         quality: Quality,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Result<(Vec<LayerAudio>, f64, PhraseTrace), RenderError> {
-        let b = self.backend.as_ref();
         let grid = b.grid();
         let fs = grid.frame_secs();
         let t0 = phrase.start_sec() - HEAD_SECS;

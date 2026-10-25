@@ -99,10 +99,12 @@ Parts:
 - [x] X-SAMPA input with per-language maps declared by phonemizers (0021)
 - [x] WASM phonemizer host (wasmtime 50, WASI p2, sandboxed, fuel-limited),
       guest SDK (stable) and template (Japanese kana/romaji) (0019)
-- [ ] UTAU concatenative backend (oto.ini, RMVPE + WORLD, equal-power
-      crossfades) with a generated test voicebank
-- [ ] svs.io adapter
-- [ ] Multi-singer projects (per-track backends)
+- [x] UTAU concatenative backend (oto.ini, RMVPE + WORLD via world-rs,
+      equal-power crossfades) with a generated CC0 test voicebank (0022)
+- [x] svs.io adapter: ZMTP 3.0 REQ client, op-graph planning, WORLD-feature
+      and audio paths; Python reference backend (0023)
+- [x] Multi-singer projects (a backend per singer), `cantor analyze`, and
+      `cantor render` through the engine (0024)
 
 Done when:
 - [x] Effects: EQ, compressor and de-esser meet their static curves within
@@ -122,10 +124,15 @@ Done when:
       CI stable job)
 - [x] With the template plugin installed, kana lyrics render the same audio
       as the dictionary's romaji (`cantor-backends/tests/phonemizer_plugin.rs`)
-- [ ] A UTAU voicebank renders a melody within 20 cents p95 of the score,
-      deterministically, with the vocoder fast path for pitch-only edits
-- [ ] The svs.io adapter drives a reference backend end to end
-- [ ] One render call mixes tracks with different singers and backends
+- [x] A UTAU voicebank renders a melody within 20 cents p95 of the score
+      and vowel onsets within 60 ms, deterministically, with the vocoder
+      fast path for pitch-only edits and formant-warped doubling
+      (`cantor-backends/tests/utau.rs`)
+- [x] The svs.io adapter drives a reference backend over real ZeroMQ
+      (pyzmq) end to end, within 20 cents p95, on both the WORLD-feature
+      and the audio path (`cantor-backends/tests/svsio.rs`)
+- [x] One render call mixes a DiffSinger and a UTAU track
+      (`cantor-server/tests/multi_singer.rs`, `cantor-cli/tests/render_cli.rs`)
 
 ## Open items
 - Confirm with OpenVPI that the in-memory noise rewrite fits the Qixuan
