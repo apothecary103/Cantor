@@ -1,0 +1,45 @@
+[package]
+name = "app"
+description = "Cantor desktop application (GPUI)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "cantor-app"
+path = "src/main.rs"
+
+[features]
+# Dev builds in the Nix shell use GPUI's runtime-compiled shaders because
+# Xcode's Metal compiler is unavailable there. macOS release builds run
+# outside Nix with `--no-default-features` and precompile them; see
+# docs/decisions/0018-precompiled-shaders.md.
+default = ["runtime-shaders"]
+runtime-shaders = ["gpui-kit/runtime-shaders"]
+
+[lib]
+name = "cantor_app"
+path = "src/lib.rs"
+
+[dependencies]
+gpui-kit.workspace = true
+cantor-core.workspace = true
+cantor-io.workspace = true
+cantor-render.workspace = true
+cantor-server.workspace = true
+serde_json.workspace = true
+
+
+# AppKit must run on the main thread, so this test supplies its own main.
+[[test]]
+name = "screens"
+harness = false
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+image = { version = "=0.25.9", default-features = false, features = ["png"] }
+
+[lints]
+workspace = true

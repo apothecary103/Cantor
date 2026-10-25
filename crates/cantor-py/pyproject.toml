@@ -1,0 +1,16 @@
+[build-system]
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[project]
+name = "cantor"
+description = "Scripting and automation for the Cantor singing voice synthesis workstation"
+requires-python = ">=3.12"
+license = { text = "MIT OR Apache-2.0" }
+classifiers = ["Programming Language :: Rust", "Programming Language :: Python :: Implementation :: CPython"]
+dynamic = ["version"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "cantor._native"
+features = ["pyo3/abi3-py312"]

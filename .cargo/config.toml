@@ -1,0 +1,19 @@
+[alias]
+xtask = "run --quiet --package xtask --"
+
+# Debug builds of workspace crates use Cranelift; dependencies and release
+# builds use LLVM. `cargo xtask ci` asserts this.
+# See docs/decisions/0002-cranelift-dev-builds.md.
+[unstable]
+codegen-backend = true
+
+[profile.dev]
+codegen-backend = "cranelift"
+
+# Cranelift lacks some SIMD intrinsics that dependencies use on x86_64
+# (e.g. llvm.x86.sse2.pmulhu.w), so dependencies build with LLVM.
+[profile.dev.package."*"]
+codegen-backend = "llvm"
+
+[profile.release]
+codegen-backend = "llvm"

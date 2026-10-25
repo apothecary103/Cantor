@@ -24,7 +24,7 @@
           # lib.fakeSha256, run `nix develop`, and paste the hash from the error.
           rust = fenix.packages.${system}.fromToolchainFile {
             file = ./rust-toolchain.toml;
-            sha256 = lib.fakeSha256;
+            sha256 = "sha256-ZBbs8/vrgUCyEPZ+2MU1MQEIDLVI05q8t1JRuFFQytw=";
           };
 
           # Libraries GPUI and cpal load at runtime on Linux.
@@ -34,7 +34,51 @@
             alsa-lib pipewire
           ];
 
-          ortLib = "${pkgs.onnxruntime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
+          # ort 2.0.0-rc.15 targets ONNX Runtime 1.31; nixpkgs is older and
+          # its macOS build lacks CoreML, so use the official release where
+          # one exists (docs/decisions/0009-onnxruntime.md).
+          ortVersion = "1.31.0";
+          ortReleases = {
+            aarch64-darwin = {
+              name = "osx-arm64";
+              sha256 = "1031b36dd3bdaa8d976a6130d9cf2a05e9be320b93ae804f8427b91dc3432afc";
+            };
+            x86_64-linux = {
+              name = "linux-x64";
+              sha256 = "cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57";
+            };
+            aarch64-linux = {
+              name = "linux-aarch64";
+              sha256 = "c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab";
+            };
+          };
+          onnxruntime =
+            if ortReleases ? ${system} then
+              let
+                r = ortReleases.${system};
+              in
+              stdenv.mkDerivation {
+                pname = "onnxruntime-bin";
+                version = ortVersion;
+                src = pkgs.fetchurl {
+                  url = "https://github.com/microsoft/onnxruntime/releases/download/v${ortVersion}/onnxruntime-${r.name}-${ortVersion}.tgz";
+                  inherit (r) sha256;
+                };
+                nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
+                buildInputs = lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc.cc.lib ];
+                dontConfigure = true;
+                dontBuild = true;
+                installPhase = ''
+                  mkdir -p $out
+                  cp -r lib include $out/
+                  rm -rf $out/lib/*.dSYM
+                '';
+              }
+            else
+              # No official build for this system (x86_64-darwin): best effort.
+              pkgs.onnxruntime;
+
+          ortLib = "${onnxruntime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
         in
         {
           devShells.default = pkgs.mkShell {
@@ -45,14 +89,19 @@
               python3
               maturin
               wasm-tools
-              nixfmt-rfc-style
+              nixfmt
+              # Test fixtures are downloaded by checksum and unzipped.
+              curl
+              unzip
+              # npx runs the MCP conformance suite (`cargo xtask conformance`).
+              nodejs_22
             ];
 
             buildInputs =
-              [ pkgs.onnxruntime ]
-              ++ lib.optionals stdenv.isLinux linuxRuntimeLibs
+              [ onnxruntime ]
+              ++ lib.optionals stdenv.hostPlatform.isLinux linuxRuntimeLibs
               # Use the newest apple-sdk_* your nixpkgs provides.
-              ++ lib.optionals stdenv.isDarwin [ pkgs.apple-sdk_15 ];
+              ++ lib.optionals stdenv.hostPlatform.isDarwin [ pkgs.apple-sdk_15 ];
 
             env = {
               # ort uses the `load-dynamic` feature and loads this library.
@@ -62,14 +111,29 @@
             };
 
             shellHook = ''
-              ${lib.optionalString stdenv.isLinux ''
+              ${lib.optionalString stdenv.hostPlatform.isLinux ''
                 export LD_LIBRARY_PATH=${lib.makeLibraryPath linuxRuntimeLibs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
               ''}
               echo "cantor dev shell: $(rustc --version)"
             '';
           };
 
-          formatter = pkgs.nixfmt-rfc-style;
+          # Latest stable Rust, for crates that must build without nightly
+          # (cantor-plugin-sdk). CI: `nix develop .#stable --command ...`.
+          devShells.stable = pkgs.mkShell {
+            nativeBuildInputs = [
+              (fenix.packages.${system}.stable.withComponents [
+                "cargo"
+                "rustc"
+                "rust-std"
+              ])
+            ];
+            shellHook = ''
+              echo "cantor stable shell: $(rustc --version)"
+            '';
+          };
+
+          formatter = pkgs.nixfmt;
         };
     };
 }

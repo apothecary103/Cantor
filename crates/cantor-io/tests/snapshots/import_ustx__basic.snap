@@ -1,0 +1,548 @@
+---
+source: crates/cantor-io/tests/import_ustx.rs
+expression: snapshot_value(&imported)
+---
+{
+  "diagnostics": [
+    {
+      "code": "ustx.renderer_settings",
+      "message": "track `Lead`: resampler `worldline` not carried over; Cantor's `utau` backend synthesizes on its own",
+      "severity": "info",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "ustx.phonemizer",
+      "message": "track `Lead`: phonemizer `OpenUtau.Plugin.Builtin.JapaneseCVVCPhonemizer` not carried over; Cantor picks the phonemizer from the singer",
+      "severity": "info",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "ustx.phonemizer",
+      "message": "track `Harmony`: phonemizer `OpenUtau.Core.DiffSinger.DiffSingerJapanesePhonemizer` not carried over; Cantor picks the phonemizer from the singer",
+      "severity": "info",
+      "target": {
+        "id": 2,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "ustx.part_comment",
+      "message": "voice part `Bridge` has a comment, which Cantor parts cannot hold: \"retake later\"",
+      "severity": "info",
+      "target": {
+        "id": 10,
+        "kind": "part"
+      }
+    },
+    {
+      "code": "ustx.part_length_derived",
+      "message": "voice part `Harmony A` has no duration; its length was set to 9600 ticks from its notes",
+      "severity": "info",
+      "target": {
+        "id": 14,
+        "kind": "part"
+      }
+    },
+    {
+      "code": "ustx.lyric_extension",
+      "message": "OpenUtau extension lyric `+~` became Cantor's `+` (continue the previous syllable); its variant meaning was not kept (1 note)",
+      "severity": "info",
+      "target": {
+        "id": 9,
+        "kind": "note"
+      }
+    },
+    {
+      "code": "ustx.curve_unsupported",
+      "message": "curve `dyn` has no Cantor parameter with the same meaning and units and was not imported (1 part)",
+      "severity": "warning",
+      "target": {
+        "id": 3,
+        "kind": "part"
+      }
+    },
+    {
+      "code": "ustx.phoneme_override_unsupported",
+      "message": "per-phoneme overrides (symbol, offset, preutterance, overlap) patch the output of OpenUtau's phonemizer, which is not known at import time, and were not imported (1 note)",
+      "severity": "warning",
+      "target": {
+        "id": 11,
+        "kind": "note"
+      }
+    },
+    {
+      "code": "ustx.portamento_approximated",
+      "message": "pitch points approximated by Cantor's portamento: linear, ease-in and ease-out segments use Cantor's cosine (ease in-out) curve (1 note)",
+      "severity": "info",
+      "target": {
+        "id": 12,
+        "kind": "note"
+      }
+    },
+    {
+      "code": "ustx.vibrato_drift",
+      "message": "OpenUtau vibrato drift offsets the vibrato's center pitch, which Cantor's vibrato cannot express (Cantor's drift is rate jitter); it was not imported (1 note)",
+      "severity": "warning",
+      "target": {
+        "id": 13,
+        "kind": "note"
+      }
+    },
+    {
+      "code": "ustx.phoneme_expression_unsupported",
+      "message": "per-phoneme expression `vel` has no Cantor equivalent and was not imported (1 value)",
+      "severity": "warning",
+      "target": {
+        "id": 16,
+        "kind": "note"
+      }
+    },
+    {
+      "code": "ustx.curve_duplicate_tick",
+      "message": "pitch-deviation (pitd) points landing on the same tick of a track were merged; the last in file order was kept (1 point)",
+      "severity": "warning",
+      "target": {
+        "kind": "curve",
+        "param": "pitch",
+        "track": 2
+      }
+    },
+    {
+      "code": "ustx.wave_part_unsupported",
+      "message": "audio (wave) parts are not supported by Cantor and were not imported (1 part)",
+      "severity": "warning",
+      "target": {
+        "id": 2,
+        "kind": "track"
+      }
+    }
+  ],
+  "project": {
+    "key_map": [
+      {
+        "scale": "major",
+        "tick": 0,
+        "tonic": 2
+      }
+    ],
+    "meta": {
+      "artist": "",
+      "comment": "hand-written fixture for the Cantor USTX importer",
+      "title": "Import Test Song"
+    },
+    "sections": [],
+    "seeds": {},
+    "takes": {},
+    "tempo_map": [
+      {
+        "bpm": 120.0,
+        "tick": 0
+      },
+      {
+        "bpm": 140.5,
+        "tick": 30720
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "denominator": 4,
+        "numerator": 4
+      },
+      {
+        "bar": 4,
+        "denominator": 4,
+        "numerator": 3
+      }
+    ],
+    "tracks": [
+      {
+        "backend": "utau",
+        "curves": {
+          "pitch": {
+            "model_prediction": {
+              "interp": "monotone_hermite",
+              "points": []
+            },
+            "user_delta": {
+              "interp": "linear",
+              "points": [
+                [
+                  3840,
+                  0.0
+                ],
+                [
+                  4000,
+                  25.0
+                ],
+                [
+                  4160,
+                  -10.0
+                ],
+                [
+                  4320,
+                  0.0
+                ]
+              ]
+            }
+          }
+        },
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 1,
+        "mix": {
+          "gain_db": -3.5,
+          "mute": false,
+          "pan": -0.2,
+          "solo": false
+        },
+        "name": "Lead",
+        "parts": [
+          {
+            "id": 3,
+            "length": 15360,
+            "name": "Verse",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 4,
+                "length": 1920,
+                "lyric": "ka",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6000.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 5,
+                "length": 1920,
+                "lyric": "ra",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6200.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  },
+                  "vibrato": {
+                    "depth_cents": 30.0,
+                    "drift": 0.0,
+                    "fade_in": 0.15,
+                    "fade_out": 0.2,
+                    "phase": 0.25,
+                    "rate_hz": 5.555555555555555,
+                    "start": 0.4
+                  }
+                },
+                "id": 6,
+                "length": 3840,
+                "lyric": "su",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6400.0,
+                "start": 3840
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 7,
+                "length": 1920,
+                "lyric": "+",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6400.0,
+                "start": 7680
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.3333333333333333,
+                    "length_ms": 90.0,
+                    "overshoot_cents": 30.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 8,
+                "length": 3840,
+                "lyric": "a",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6700.0,
+                "start": 9600
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 9,
+                "length": 1920,
+                "lyric": "+",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6500.0,
+                "start": 13440
+              }
+            ],
+            "start": 0
+          },
+          {
+            "id": 10,
+            "length": 7680,
+            "name": "Bridge",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 11,
+                "length": 1920,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6900.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "length_ms": 100.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 12,
+                "length": 1920,
+                "lyric": "la",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7100.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  },
+                  "vibrato": {
+                    "depth_cents": 40.0,
+                    "drift": 0.0,
+                    "fade_in": 0.2,
+                    "fade_out": 0.3,
+                    "phase": 0.0,
+                    "rate_hz": 5.0,
+                    "start": 0.2
+                  }
+                },
+                "id": 13,
+                "length": 2880,
+                "lyric": "a",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 3840
+              }
+            ],
+            "start": 30720
+          }
+        ],
+        "singer": {
+          "id": "Example Voice CV"
+        },
+        "voice_mix": []
+      },
+      {
+        "backend": "diffsinger",
+        "curves": {
+          "pitch": {
+            "model_prediction": {
+              "interp": "monotone_hermite",
+              "points": []
+            },
+            "user_delta": {
+              "interp": "linear",
+              "points": [
+                [
+                  7680,
+                  10.0
+                ],
+                [
+                  8160,
+                  5.0
+                ]
+              ]
+            }
+          }
+        },
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 2,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.5,
+          "solo": true
+        },
+        "name": "Harmony",
+        "parts": [
+          {
+            "id": 14,
+            "length": 9600,
+            "name": "Harmony A",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 15,
+                "length": 3840,
+                "lyric": "ha",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 5500.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.5,
+                    "length_ms": 80.0,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 16,
+                "length": 3840,
+                "lyric": "ru",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 5700.0,
+                "start": 3840
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 17,
+                "length": 1920,
+                "lyric": "ne",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 5900.0,
+                "start": 7680
+              }
+            ],
+            "start": 7680
+          }
+        ],
+        "singer": {
+          "id": "Example DS Voice"
+        },
+        "voice_mix": []
+      }
+    ]
+  }
+}

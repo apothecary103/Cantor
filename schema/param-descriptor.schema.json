@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ParamDescriptor",
+  "description": "Describes one curve parameter. `min`/`max`/`default` apply to the final\nvalue `base + model_prediction + user_delta`.",
+  "type": "object",
+  "properties": {
+    "default": {
+      "description": "Value when nothing is predicted or edited.",
+      "type": "number",
+      "format": "double"
+    },
+    "description": {
+      "description": "What the parameter controls.",
+      "type": "string"
+    },
+    "id": {
+      "description": "Stable identifier used in ops and project files.",
+      "type": "string"
+    },
+    "max": {
+      "description": "Largest final value.",
+      "type": "number",
+      "format": "double"
+    },
+    "min": {
+      "description": "Smallest final value.",
+      "type": "number",
+      "format": "double"
+    },
+    "name": {
+      "description": "Human-readable name.",
+      "type": "string"
+    },
+    "unit": {
+      "description": "Unit of curve values.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "unit",
+    "min",
+    "max",
+    "default",
+    "description"
+  ]
+}

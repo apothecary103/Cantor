@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- Hand-written test fixture for the Cantor MusicXML importer. -->
+<score-partwise version="4.0">
+  <work>
+    <work-title>Little Duet</work-title>
+  </work>
+  <movement-title>I. Allegretto</movement-title>
+  <identification>
+    <creator type="composer">Ada Composer</creator>
+    <creator type="lyricist">Ben Poet</creator>
+    <creator type="arranger">Cy Arranger</creator>
+    <rights>Public domain &amp; free</rights>
+  </identification>
+  <part-list>
+    <score-part id="P1">
+      <part-name>Soprano</part-name>
+    </score-part>
+    <score-part id="P2">
+      <part-name>Alto</part-name>
+    </score-part>
+  </part-list>
+
+  <!-- Soprano: divisions 4 (a quarter is 4). -->
+  <part id="P1">
+    <!-- Pickup: one quarter. -->
+    <measure number="0" implicit="yes">
+      <attributes>
+        <divisions>4</divisions>
+        <key><fifths>0</fifths><mode>major</mode></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <direction placement="above">
+        <direction-type>
+          <metronome><beat-unit>quarter</beat-unit><per-minute>96</per-minute></metronome>
+        </direction-type>
+        <sound tempo="96"/>
+      </direction>
+      <note>
+        <pitch><step>G</step><octave>4</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>single</syllabic><text>Oh</text></lyric>
+      </note>
+    </measure>
+    <!-- Multi-syllable word, then a melisma with <extend>. -->
+    <measure number="1">
+      <direction>
+        <direction-type><dynamics><p/></dynamics></direction-type>
+      </direction>
+      <direction>
+        <direction-type><words>dolce</words></direction-type>
+      </direction>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>begin</syllabic><text>Hal</text></lyric>
+      </note>
+      <note>
+        <pitch><step>D</step><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>middle</syllabic><text>le</text></lyric>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <notations><slur type="start" number="1"/></notations>
+        <lyric number="1"><syllabic>end</syllabic><text>lu</text><extend/></lyric>
+      </note>
+      <note>
+        <pitch><step>F</step><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <notations><slur type="stop" number="1"/></notations>
+        <lyric number="1"><extend type="stop"/></lyric>
+      </note>
+    </measure>
+    <!-- A rest, and a tie across the bar line. -->
+    <measure number="2">
+      <note>
+        <pitch><step>D</step><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><staccato/></articulations></notations>
+        <lyric number="1"><syllabic>single</syllabic><text>sing</text></lyric>
+      </note>
+      <note>
+        <rest/>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>8</duration><tie type="start"/><voice>1</voice><type>half</type>
+        <notations><tied type="start"/></notations>
+        <lyric number="1"><syllabic>single</syllabic><text>now</text></lyric>
+      </note>
+    </measure>
+    <!-- Tie end, a quarter-tone alter, a grace note and a chord. -->
+    <measure number="3">
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>4</duration><tie type="stop"/><voice>1</voice><type>quarter</type>
+        <notations><tied type="stop"/></notations>
+      </note>
+      <note>
+        <pitch><step>F</step><alter>0.5</alter><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <accidental>quarter-sharp</accidental>
+        <lyric number="1"><syllabic>begin</syllabic><text>a</text></lyric>
+      </note>
+      <note>
+        <grace slash="yes"/>
+        <pitch><step>A</step><octave>5</octave></pitch>
+        <voice>1</voice><type>eighth</type>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>end</syllabic><text>men</text></lyric>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>B</step><octave>4</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+      </note>
+      <note>
+        <rest/>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+      </note>
+    </measure>
+    <!-- Key change to G major, 3/4, tempo change. -->
+    <measure number="4">
+      <attributes>
+        <key><fifths>1</fifths><mode>major</mode></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <direction placement="above">
+        <direction-type>
+          <metronome><beat-unit>quarter</beat-unit><per-minute>72</per-minute></metronome>
+        </direction-type>
+        <sound tempo="72"/>
+      </direction>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>12</duration><voice>1</voice><type>half</type><dot/>
+        <lyric number="1"><syllabic>single</syllabic><text>home</text></lyric>
+      </note>
+    </measure>
+    <!-- A second voice and a second verse. -->
+    <measure number="5">
+      <note>
+        <pitch><step>F</step><alter>1</alter><octave>5</octave></pitch>
+        <duration>4</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>begin</syllabic><text>fare</text></lyric>
+        <lyric number="2"><syllabic>begin</syllabic><text>good</text></lyric>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>8</duration><voice>1</voice><type>half</type>
+        <lyric number="1"><syllabic>end</syllabic><text>well</text></lyric>
+      </note>
+      <backup><duration>12</duration></backup>
+      <note>
+        <pitch><step>D</step><octave>5</octave></pitch>
+        <duration>12</duration><voice>2</voice><type>half</type><dot/>
+      </note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+
+  <!-- Alto: divisions 24, changing to 12 in measure 3. -->
+  <part id="P2">
+    <measure number="0" implicit="yes">
+      <attributes>
+        <divisions>24</divisions>
+        <key><fifths>0</fifths><mode>major</mode></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <rest/>
+        <duration>24</duration><voice>1</voice><type>quarter</type>
+      </note>
+    </measure>
+    <!-- Lyrics without a number attribute count as verse 1. -->
+    <measure number="1">
+      <note>
+        <pitch><step>A</step><octave>4</octave></pitch>
+        <duration>48</duration><voice>1</voice><type>half</type>
+        <lyric><syllabic>begin</syllabic><text>Hal</text></lyric>
+      </note>
+      <note>
+        <pitch><step>B</step><octave>4</octave></pitch>
+        <duration>24</duration><voice>1</voice><type>quarter</type>
+        <lyric><syllabic>middle</syllabic><text>le</text></lyric>
+      </note>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>24</duration><voice>1</voice><type>quarter</type>
+        <lyric><syllabic>end</syllabic><text>lu</text></lyric>
+      </note>
+    </measure>
+    <measure number="2">
+      <note>
+        <pitch><step>B</step><octave>4</octave></pitch>
+        <duration>24</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>single</syllabic><text>sing</text></lyric>
+      </note>
+      <note>
+        <rest/>
+        <duration>24</duration><voice>1</voice><type>quarter</type>
+      </note>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>48</duration><voice>1</voice><type>half</type>
+        <lyric number="1"><syllabic>single</syllabic><text>now</text></lyric>
+        <lyric number="2"><syllabic>single</syllabic><text>then</text></lyric>
+      </note>
+    </measure>
+    <measure number="3">
+      <attributes><divisions>12</divisions></attributes>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>24</duration><voice>1</voice><type>half</type>
+        <lyric number="1"><syllabic>begin</syllabic><text>a</text></lyric>
+      </note>
+      <note>
+        <pitch><step>B</step><octave>4</octave></pitch>
+        <duration>12</duration><voice>1</voice><type>quarter</type>
+        <lyric number="1"><syllabic>end</syllabic><text>men</text></lyric>
+      </note>
+      <note>
+        <rest/>
+        <duration>12</duration><voice>1</voice><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="4">
+      <attributes>
+        <key><fifths>1</fifths><mode>major</mode></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <sound tempo="72"/>
+      <note>
+        <pitch><step>B</step><octave>4</octave></pitch>
+        <duration>36</duration><voice>1</voice><type>half</type><dot/>
+        <lyric number="1"><syllabic>single</syllabic><text>home</text></lyric>
+      </note>
+    </measure>
+    <!-- No lyric right after a sung note: a melisma ("+"). -->
+    <measure number="5">
+      <note>
+        <pitch><step>A</step><octave>4</octave></pitch>
+        <duration>36</duration><voice>1</voice><type>half</type><dot/>
+        <notations><fermata type="upright"/></notations>
+      </note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

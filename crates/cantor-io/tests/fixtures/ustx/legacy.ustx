@@ -1,0 +1,44 @@
+name: Legacy Waltz
+comment: ''
+output_dir: Vocal
+cache_dir: UCache
+ustx_version: 0.5
+resolution: 480
+bpm: 98
+beat_per_bar: 3
+beat_unit: 4
+tracks:
+- singer: Example Voice CV
+  phonemizer: OpenUtau.Core.DefaultPhonemizer
+  renderer: CLASSIC
+  mute: false
+  solo: false
+  volume: 0
+  pan: 0
+voice_parts:
+- name: Melody
+  comment: ''
+  track_no: 0
+  position: 1440
+  notes:
+  - position: 0
+    duration: 720
+    tone: 62
+    lyric: 1
+    pitch:
+      data:
+      - {x: -25, y: 0, shape: io}
+      - {x: 25, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0}
+  - position: 720
+    duration: 720
+    tone: 64
+    lyric: la
+    pitch:
+      data:
+      - {x: 0, y: -5, shape: io}
+      - {x: 50, y: 0, shape: io}
+      snap_first: false
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0}
+wave_parts: []

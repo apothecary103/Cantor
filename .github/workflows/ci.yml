@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  ci:
+    name: xtask ci (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://nix-community.cachix.org
+            extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-ci-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-ci-
+      - name: Cache model fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/fixtures/downloaded
+          key: fixtures-${{ hashFiles('crates/cantor-fixtures/src/lib.rs') }}
+      - name: No placeholder toolchain hash
+        # Matches the assignment only; the comment explaining the bump
+        # procedure mentions lib.fakeSha256 on purpose.
+        run: "! grep -nE 'sha256 *= *lib\\.fakeSha256' flake.nix"
+      - name: nix flake check
+        run: nix flake check
+      - name: cargo xtask ci
+        run: nix develop --command cargo xtask ci
+      - name: precompiled-shader check (macOS)
+        if: runner.os == 'macOS'
+        run: nix develop --command cargo xtask shader-check
+      - name: cargo xtask schema leaves no diff
+        run: |
+          nix develop --command cargo xtask schema
+          git diff --exit-code -- schema/
+          test -z "$(git status --porcelain -- schema/)"
+
+  python:
+    name: python wheel + spec example (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - name: Cache model fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/fixtures/downloaded
+          key: fixtures-${{ hashFiles('crates/cantor-fixtures/src/lib.rs') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-${{ runner.os }}-python-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-python-
+      - run: nix develop --command cargo xtask python
+
+  miri:
+    name: miri (cantor-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cache/miri
+            target
+          key: cargo-${{ runner.os }}-miri-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-miri-
+      - run: nix develop --command cargo xtask miri
+
+  plugin-sdk-stable:
+    name: cantor-plugin-sdk on stable Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      # Run from outside the repo so cargo does not read .cargo/config.toml,
+      # whose Cranelift settings are nightly-only (docs/decisions/0002).
+      - name: cargo test on stable
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          nix develop .#stable --command bash -c '
+            cd "$RUNNER_TEMP" &&
+            cargo test --locked \
+              --manifest-path "$GITHUB_WORKSPACE/crates/cantor-plugin-sdk/Cargo.toml" \
+              --target-dir "$GITHUB_WORKSPACE/target/stable"'
+
+  mcp-conformance:
+    # Official MCP conformance suite, required scenarios for the pinned spec
+    # revision, against the cantor-mcp fixture server (docs/decisions/0013).
+    # xtask keeps npx's cache in target/npm-cache.
+    name: MCP conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-conformance-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'xtask/src/main.rs') }}
+          restore-keys: cargo-${{ runner.os }}-conformance-
+      - run: nix develop --command cargo xtask conformance
+
+  tsan:
+    # Stub until cantor-audio lands: runs the TSAN_CRATES list in xtask,
+    # currently cantor-core's tests (including the cross-thread snapshot test).
+    name: thread sanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target/tsan
+          key: cargo-${{ runner.os }}-tsan-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-tsan-
+      - run: nix develop --command cargo xtask tsan

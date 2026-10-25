@@ -1,0 +1,599 @@
+---
+source: crates/cantor-io/tests/import_musicxml.rs
+expression: "serde_json::json!({\n    \"project\": imported.project, \"diagnostics\": imported.diagnostics,\n})"
+---
+{
+  "diagnostics": [
+    {
+      "code": "musicxml.irregular_measure",
+      "message": "measure 0 lasts 1920 ticks instead of 7680 (4/4); it is imported as a bar of 1/4",
+      "severity": "info",
+      "target": {
+        "kind": "time_sig_map"
+      }
+    },
+    {
+      "code": "musicxml.voice",
+      "message": "Soprano: tracks are monophonic, so only the first voice was imported; 1 notes in voice(s) 2 were not",
+      "severity": "warning",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "musicxml.chord",
+      "message": "Soprano: tracks are monophonic, so each chord keeps its first note; 1 chord notes were not imported",
+      "severity": "warning",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "musicxml.grace",
+      "message": "Soprano: 1 grace notes were not imported",
+      "severity": "info",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "musicxml.lyric_verse",
+      "message": "Soprano: only one verse is imported; 1 lyrics of verse(s) 2 were not",
+      "severity": "info",
+      "target": {
+        "id": 1,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "musicxml.lyric_verse",
+      "message": "Alto: only one verse is imported; 1 lyrics of verse(s) 2 were not",
+      "severity": "info",
+      "target": {
+        "id": 15,
+        "kind": "track"
+      }
+    },
+    {
+      "code": "musicxml.dynamics",
+      "message": "1 dynamics markings were not imported",
+      "severity": "info"
+    },
+    {
+      "code": "musicxml.words",
+      "message": "1 text directions (such as \"rit.\" or \"dolce\") were not imported",
+      "severity": "info"
+    },
+    {
+      "code": "musicxml.articulations",
+      "message": "1 articulations were not imported",
+      "severity": "info"
+    },
+    {
+      "code": "musicxml.fermatas",
+      "message": "1 fermatas were not imported",
+      "severity": "info"
+    }
+  ],
+  "project": {
+    "key_map": [
+      {
+        "scale": "major",
+        "tick": 0,
+        "tonic": 0
+      },
+      {
+        "scale": "major",
+        "tick": 24960,
+        "tonic": 7
+      }
+    ],
+    "meta": {
+      "artist": "Ada Composer, Ben Poet",
+      "comment": "Movement: I. Allegretto\nArranger: Cy Arranger\nRights: Public domain & free",
+      "title": "Little Duet"
+    },
+    "sections": [],
+    "seeds": {},
+    "takes": {},
+    "tempo_map": [
+      {
+        "bpm": 96.0,
+        "tick": 0
+      },
+      {
+        "bpm": 72.0,
+        "tick": 24960
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "denominator": 4,
+        "numerator": 1
+      },
+      {
+        "bar": 1,
+        "denominator": 4,
+        "numerator": 4
+      },
+      {
+        "bar": 4,
+        "denominator": 4,
+        "numerator": 3
+      }
+    ],
+    "tracks": [
+      {
+        "backend": "",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 1,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Soprano",
+        "parts": [
+          {
+            "id": 2,
+            "length": 36480,
+            "name": "Soprano",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 3,
+                "length": 1920,
+                "lyric": "Oh",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6700.0,
+                "start": 0
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 4,
+                "length": 1920,
+                "lyric": "Hal-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 5,
+                "length": 1920,
+                "lyric": "le-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7400.0,
+                "start": 3840
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 6,
+                "length": 1920,
+                "lyric": "lu",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7600.0,
+                "start": 5760
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 7,
+                "length": 1920,
+                "lyric": "+",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7700.0,
+                "start": 7680
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 8,
+                "length": 1920,
+                "lyric": "sing",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7400.0,
+                "start": 9600
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 9,
+                "length": 5760,
+                "lyric": "now",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7600.0,
+                "start": 13440
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 10,
+                "length": 1920,
+                "lyric": "a-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7750.0,
+                "start": 19200
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 11,
+                "length": 1920,
+                "lyric": "men",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7900.0,
+                "start": 21120
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 12,
+                "length": 5760,
+                "lyric": "home",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7900.0,
+                "start": 24960
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 13,
+                "length": 1920,
+                "lyric": "fare-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7800.0,
+                "start": 30720
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 14,
+                "length": 3840,
+                "lyric": "well",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7900.0,
+                "start": 32640
+              }
+            ],
+            "start": 0
+          }
+        ],
+        "singer": {
+          "id": ""
+        },
+        "voice_mix": []
+      },
+      {
+        "backend": "",
+        "curves": {},
+        "doubling": {
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "layers": 1,
+          "seed": 0,
+          "spacing": 0.5
+        },
+        "effects": [],
+        "id": 15,
+        "mix": {
+          "gain_db": 0.0,
+          "mute": false,
+          "pan": 0.0,
+          "solo": false
+        },
+        "name": "Alto",
+        "parts": [
+          {
+            "id": 16,
+            "length": 36480,
+            "name": "Alto",
+            "notes": [
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 17,
+                "length": 3840,
+                "lyric": "Hal-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6900.0,
+                "start": 1920
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 18,
+                "length": 1920,
+                "lyric": "le-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7100.0,
+                "start": 5760
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 19,
+                "length": 1920,
+                "lyric": "lu",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 7680
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 20,
+                "length": 1920,
+                "lyric": "sing",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7100.0,
+                "start": 9600
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 21,
+                "length": 3840,
+                "lyric": "now",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 13440
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 22,
+                "length": 3840,
+                "lyric": "a-",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7200.0,
+                "start": 17280
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 23,
+                "length": 1920,
+                "lyric": "men",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7100.0,
+                "start": 21120
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 24,
+                "length": 5760,
+                "lyric": "home",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 7100.0,
+                "start": 24960
+              },
+              {
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "id": 25,
+                "length": 5760,
+                "lyric": "+",
+                "modes": {
+                  "pitch": {},
+                  "pronunciation": {},
+                  "timbre": {}
+                },
+                "pitch_cents": 6900.0,
+                "start": 30720
+              }
+            ],
+            "start": 0
+          }
+        ],
+        "singer": {
+          "id": ""
+        },
+        "voice_mix": []
+      }
+    ]
+  }
+}

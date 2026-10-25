@@ -1,0 +1,246 @@
+name: Import Test Song
+comment: hand-written fixture for the Cantor USTX importer
+output_dir: Vocal
+cache_dir: UCache
+ustx_version: '0.6'
+resolution: 480
+bpm: 120
+beat_per_bar: 4
+beat_unit: 4
+expressions:
+  dyn:
+    name: dynamics (curve)
+    abbr: dyn
+    type: Curve
+    min: -240
+    max: 120
+    default_value: 0
+    is_flag: false
+    flag: ''
+  pitd:
+    name: pitch deviation (curve)
+    abbr: pitd
+    type: Curve
+    min: -1200
+    max: 1200
+    default_value: 0
+    is_flag: false
+    flag: ''
+  vel:
+    name: velocity
+    abbr: vel
+    type: Numerical
+    min: 0
+    max: 200
+    default_value: 100
+    is_flag: false
+    flag: ''
+exp_selectors:
+- pitd
+- dyn
+exp_primary: 0
+exp_secondary: 1
+key: 2
+time_signatures:
+- bar_position: 0
+  beat_per_bar: 4
+  beat_unit: 4
+- bar_position: 4
+  beat_per_bar: 3
+  beat_unit: 4
+tempos:
+- position: 0
+  bpm: 120
+- position: 7680
+  bpm: 140.5
+tracks:
+- singer: Example Voice CV
+  phonemizer: OpenUtau.Plugin.Builtin.JapaneseCVVCPhonemizer
+  renderer_settings:
+    renderer: CLASSIC
+    resampler: worldline
+    wavtool: ''
+  track_name: Lead
+  track_color: Blue
+  mute: false
+  solo: false
+  volume: -3.5
+  pan: -20
+- singer: Example DS Voice
+  phonemizer: OpenUtau.Core.DiffSinger.DiffSingerJapanesePhonemizer
+  renderer_settings:
+    renderer: DIFFSINGER
+  track_name: Harmony
+  track_color: Pink
+  mute: false
+  solo: true
+  volume: 0
+  pan: 50
+voice_parts:
+- duration: 3840
+  name: Verse
+  comment: ''
+  track_no: 0
+  position: 0
+  notes:
+  - position: 0
+    duration: 480
+    tone: 60
+    lyric: ka
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+    phoneme_expressions: []
+    phoneme_overrides: []
+  - position: 480
+    duration: 480
+    tone: 62
+    lyric: ra
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  - position: 960
+    duration: 960
+    tone: 64
+    lyric: su
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 60, period: 180, depth: 30, in: 15, out: 20, shift: 25, drift: 0, vol_link: 0}
+  - position: 1920
+    duration: 480
+    tone: 64
+    lyric: +
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  - position: 2400
+    duration: 960
+    tone: 67
+    lyric: a
+    pitch:
+      data:
+      - {x: -30, y: 0, shape: io}
+      - {x: 20, y: 3, shape: io}
+      - {x: 60, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  - position: 3360
+    duration: 480
+    tone: 65
+    lyric: +~
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  curves:
+  - xs: [960, 1000, 1040, 1080]
+    ys: [0, 25, -10, 0]
+    abbr: pitd
+  - xs: [0, 480]
+    ys: [0, -20]
+    abbr: dyn
+- duration: 1920
+  name: Bridge
+  comment: retake later
+  track_no: 0
+  position: 7680
+  notes:
+  - position: 0
+    duration: 480
+    tone: 69
+    lyric: la
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+    phoneme_overrides:
+    - index: 0
+      phoneme: l
+      offset: 10
+  - position: 480
+    duration: 480
+    tone: 71
+    lyric: la
+    pitch:
+      data:
+      - {x: -60, y: 0, shape: l}
+      - {x: 40, y: 0, shape: l}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  - position: 960
+    duration: 720
+    tone: 72
+    lyric: a
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 80, period: 200, depth: 40, in: 20, out: 30, shift: 0, drift: 10, vol_link: 0}
+  curves: []
+- name: Harmony A
+  comment: ''
+  track_no: 1
+  position: 1920
+  notes:
+  - position: 0
+    duration: 960
+    tone: 55
+    lyric: ha
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  - position: 960
+    duration: 960
+    tone: 57
+    lyric: ru
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+    phoneme_expressions:
+    - index: 0
+      abbr: vel
+      value: 150
+  - position: 1920
+    duration: 480
+    tone: 59
+    lyric: ne
+    pitch:
+      data: []
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+  curves:
+  - xs: [0, 120, 120]
+    ys: [10, 10, 5]
+    abbr: pitd
+wave_parts:
+- name: Backing
+  comment: ''
+  track_no: 1
+  position: 0
+  relative_path: backing.wav
+  file_duration_ms: 30000
+  skip_ms: 0
+  trim_ms: 0

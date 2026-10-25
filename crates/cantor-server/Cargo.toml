@@ -1,0 +1,31 @@
+[package]
+name = "cantor-server"
+description = "Cantor engine API and JSON-RPC 2.0 server (WebSocket + stdio)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+cantor-core.workspace = true
+cantor-io.workspace = true
+cantor-render.workspace = true
+cantor-backends.workspace = true
+cantor-analysis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+axum = { workspace = true, features = ["ws"] }
+
+[[bin]]
+name = "cantor-server"
+path = "src/main.rs"
+
+[dev-dependencies]
+cantor-fixtures.workspace = true
+
+[lints]
+workspace = true

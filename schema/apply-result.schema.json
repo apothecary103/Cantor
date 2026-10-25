@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ApplyResult",
+  "description": "The outcome of an edit, undo, redo or checkout.",
+  "type": "object",
+  "properties": {
+    "applied": {
+      "description": "Whether the document changed. False when an error rejected the edit.",
+      "type": "boolean"
+    },
+    "diagnostics": {
+      "description": "Errors (edit rejected) and warnings (edit applied). Never silently\ndropped.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Diagnostic"
+      }
+    },
+    "diff": {
+      "description": "What changed.",
+      "$ref": "#/$defs/DocDiff"
+    },
+    "revision": {
+      "description": "The document revision afterwards.",
+      "$ref": "#/$defs/Revision"
+    }
+  },
+  "required": [
+    "revision",
+    "applied",
+    "diff",
+    "diagnostics"
+  ],
+  "$defs": {
+    "Diagnostic": {
+      "description": "A message about an edit, import or file. Cantor never drops an edit\nsilently: anything it cannot honor is reported here.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "description": "Stable machine-readable code, such as `\"note.not_found\"`.",
+          "type": "string"
+        },
+        "message": {
+          "description": "Human-readable explanation.",
+          "type": "string"
+        },
+        "severity": {
+          "description": "Severity.",
+          "$ref": "#/$defs/Severity"
+        },
+        "target": {
+          "description": "The entity concerned, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "message"
+      ]
+    },
+    "DocDiff": {
+      "description": "What an applied edit changed.",
+      "type": "object",
+      "properties": {
+        "added": {
+          "description": "Entities that now exist and did not before.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "uniqueItems": true
+        },
+        "modified": {
+          "description": "Entities that exist before and after, with changed content.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "uniqueItems": true
+        },
+        "removed": {
+          "description": "Entities that existed and no longer do.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "added",
+        "removed",
+        "modified"
+      ]
+    },
+    "EntityRef": {
+      "description": "Points at a part of the document.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "meta"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "tempo_map"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "time_sig_map"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "key_map"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/TrackId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "track"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/PartId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "part"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/NoteId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "note"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "curve"
+            },
+            "param": {
+              "$ref": "#/$defs/ParamId"
+            },
+            "track": {
+              "$ref": "#/$defs/TrackId"
+            }
+          },
+          "required": [
+            "kind",
+            "track",
+            "param"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/PhraseId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "phrase"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "section"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        }
+      ]
+    },
+    "NoteId": {
+      "description": "Identifies a note.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "ParamId": {
+      "description": "Names a curve parameter, such as `\"breathiness\"`. Known parameters are\nlisted by [`registry`]; ops naming anything else return a diagnostic.",
+      "type": "string"
+    },
+    "PartId": {
+      "description": "Identifies a part (a region of notes on a track).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "PhraseId": {
+      "description": "Identifies a phrase, the unit of rendering, seeding and retakes.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "Revision": {
+      "description": "A document revision. It increases on every change, including undo and\nredo, so it identifies a state for optimistic concurrency.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "Severity": {
+      "description": "How serious a diagnostic is.",
+      "oneOf": [
+        {
+          "description": "Background information.",
+          "type": "string",
+          "const": "info"
+        },
+        {
+          "description": "The edit was applied, but something deserves attention.",
+          "type": "string",
+          "const": "warning"
+        },
+        {
+          "description": "The edit was rejected; nothing changed.",
+          "type": "string",
+          "const": "error"
+        }
+      ]
+    },
+    "TrackId": {
+      "description": "Identifies a track.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    }
+  }
+}

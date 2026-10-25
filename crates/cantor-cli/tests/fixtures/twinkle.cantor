@@ -1,0 +1,216 @@
+{
+  "format": "cantor-project",
+  "version": 2,
+  "project": {
+    "meta": {
+      "title": "Twinkle (test fixture)",
+      "artist": "",
+      "comment": "Two phrases of pinyin lyrics for render tests."
+    },
+    "tempo_map": [
+      {
+        "tick": 0,
+        "bpm": 120.0
+      }
+    ],
+    "time_sig_map": [
+      {
+        "bar": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ],
+    "key_map": [],
+    "tracks": [
+      {
+        "id": 1,
+        "name": "Lead",
+        "singer": {
+          "id": "Qixuan_v2.7.0_DiffSinger_OpenUtau"
+        },
+        "backend": "diffsinger",
+        "mix": {
+          "gain_db": 0.0,
+          "pan": 0.0,
+          "mute": false,
+          "solo": false
+        },
+        "effects": [],
+        "doubling": {
+          "layers": 1,
+          "spacing": 0.5,
+          "detune_cents": 8.0,
+          "jitter_ms": 12.0,
+          "seed": 0
+        },
+        "voice_mix": [],
+        "curves": {},
+        "parts": [
+          {
+            "id": 2,
+            "name": "Verse",
+            "start": 0,
+            "length": 19200,
+            "notes": [
+              {
+                "id": 100,
+                "start": 0,
+                "length": 1920,
+                "pitch_cents": 6000.0,
+                "lyric": "yi",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 101,
+                "start": 1920,
+                "length": 1920,
+                "pitch_cents": 6000.0,
+                "lyric": "shan",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 102,
+                "start": 3840,
+                "length": 1920,
+                "pitch_cents": 6700.0,
+                "lyric": "yi",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 103,
+                "start": 5760,
+                "length": 1920,
+                "pitch_cents": 6700.0,
+                "lyric": "shan",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 104,
+                "start": 9600,
+                "length": 1920,
+                "pitch_cents": 6900.0,
+                "lyric": "liang",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 105,
+                "start": 11520,
+                "length": 1920,
+                "pitch_cents": 6900.0,
+                "lyric": "jing",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 106,
+                "start": 13440,
+                "length": 1920,
+                "pitch_cents": 6700.0,
+                "lyric": "jing",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              },
+              {
+                "id": 107,
+                "start": 15360,
+                "length": 1920,
+                "pitch_cents": 6700.0,
+                "lyric": "+",
+                "expr": {
+                  "portamento": {
+                    "before": 0.6,
+                    "overshoot_cents": 0.0,
+                    "preparation_cents": 0.0
+                  }
+                },
+                "modes": {
+                  "pitch": {},
+                  "timbre": {},
+                  "pronunciation": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "seeds": {},
+    "takes": {},
+    "sections": []
+  }
+}
