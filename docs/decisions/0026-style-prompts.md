@@ -18,6 +18,6 @@
   with every adjustment's source words. A learned text encoder can later
   produce the same `StylePlan` type.
 - Surfaces: `apply_style` (JSON-RPC, MCP, with dry-run), `Track.style()`
-  (Python), `cantor style` (CLI). The app has no style action yet: the
-  Script Log renders batches op by op, and a style line needs its own
-  Python rendering first.
+  (Python), `cantor style` (CLI), and "Style prompt…" in the app
+  (Cmd/Ctrl+Shift+Y, over the selection or the whole track), which the
+  Script Log shows as one `track.style(...)` line.
