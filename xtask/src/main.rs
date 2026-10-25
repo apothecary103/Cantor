@@ -739,6 +739,17 @@ fn bridge(validate: bool, wrap: bool, auval: bool) -> Result {
                 .arg(out.join("CantorBridge.component"))
                 .arg(&dest),
         )?;
+        // Hosted CI runners do not always scan the user folder; the system
+        // folder is reliable (passwordless sudo there; this flag is CI-only).
+        if std::env::var_os("GITHUB_ACTIONS").is_some() {
+            run(
+                "install the AU system-wide",
+                Command::new("sudo")
+                    .args(["cp", "-R"])
+                    .arg(out.join("CantorBridge.component"))
+                    .arg("/Library/Audio/Plug-Ins/Components/"),
+            )?;
+        }
         // Registration is asynchronous and the registrar caches what it has
         // seen; on loaded CI machines it can take a while. Restart it, wait
         // for the listing, validate; retry a few times.
