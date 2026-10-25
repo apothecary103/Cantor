@@ -811,29 +811,39 @@ fn bridge(validate: bool, wrap: bool, auval: bool) -> Result {
                 .arg(out.join("CantorBridge.component"))
                 .arg(&dest),
         )?;
-        // The component registrar caches what it has seen; restart it so the
-        // new component is found, and let a listing rescan.
-        let _ = Command::new("/usr/bin/killall")
-            .args(["-9", "AudioComponentRegistrar"])
+        // Registration is asynchronous and the registrar caches what it has
+        // seen; on loaded CI machines it can take a while. Restart it, wait
+        // for the listing, validate; retry a few times.
+        let installed = dest.join("CantorBridge.component");
+        let _ = Command::new("/usr/bin/codesign")
+            .args(["-dv"])
+            .arg(&installed)
             .status();
-        // Registration is asynchronous: wait until the listing has it.
-        let listed = (0..30).any(|_| {
-            let found = Command::new("/usr/bin/auval")
-                .arg("-a")
-                .output()
-                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("Brdg Cntr"));
-            if !found {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+        let mut last = Err(String::from("auval did not run"));
+        for attempt in 1..=3 {
+            let _ = Command::new("/usr/bin/killall")
+                .args(["-9", "AudioComponentRegistrar"])
+                .status();
+            let listed = (0..45).any(|_| {
+                let found = Command::new("/usr/bin/auval")
+                    .arg("-a")
+                    .output()
+                    .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("Brdg Cntr"));
+                if !found {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                found
+            });
+            eprintln!("auval attempt {attempt}: component listed: {listed}");
+            last = run(
+                "auval",
+                Command::new("/usr/bin/auval").args(["-v", "aumu", "Brdg", "Cntr"]),
+            );
+            if last.is_ok() {
+                break;
             }
-            found
-        });
-        if !listed {
-            eprintln!("auval: the component is not listed yet; validating anyway");
         }
-        run(
-            "auval",
-            Command::new("/usr/bin/auval").args(["-v", "aumu", "Brdg", "Cntr"]),
-        )?;
+        last?;
     }
     Ok(())
 }
