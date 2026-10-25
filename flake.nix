@@ -122,10 +122,14 @@
           # (cantor-plugin-sdk). CI: `nix develop .#stable --command ...`.
           devShells.stable = pkgs.mkShell {
             nativeBuildInputs = [
-              (fenix.packages.${system}.stable.withComponents [
-                "cargo"
-                "rustc"
-                "rust-std"
+              (fenix.packages.${system}.combine [
+                (fenix.packages.${system}.stable.withComponents [
+                  "cargo"
+                  "rustc"
+                  "rust-std"
+                ])
+                # Phonemizer plugins are WASI p2 components.
+                fenix.packages.${system}.targets.wasm32-wasip2.stable.rust-std
               ])
             ];
             shellHook = ''

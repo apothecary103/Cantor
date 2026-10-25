@@ -337,7 +337,14 @@ impl CantorMcp {
             .map(|items| Json(List { items }))
     }
 
-    /// A singer's parameters (unit, range, default, supported), retake dimensions and licence.
+    /// Installed phonemizer plugins (WASM) and the languages they handle, plus plugins that failed to load. A plugin replaces the voicebank dictionary for its languages.
+    #[tool(annotations(read_only_hint = true, idempotent_hint = true, open_world_hint = false))]
+    async fn list_phonemizers(&self) -> ToolResult<cantor_server::engine::PhonemizerList> {
+        let e = self.engine.clone();
+        blocking(move || Ok(e.list_phonemizers())).await.map(Json)
+    }
+
+    /// A singer's parameters (unit, range, default, supported), retake dimensions, X-SAMPA spellings and licence.
     #[tool(annotations(read_only_hint = true, idempotent_hint = true, open_world_hint = false))]
     async fn get_singer_schema(
         &self,
@@ -599,6 +606,10 @@ impl CantorMcp {
             Resource::new("cantor://schema/params", "parameter registry")
                 .with_mime_type("application/json"),
         );
+        out.push(
+            Resource::new("cantor://schema/effects", "effect registry")
+                .with_mime_type("application/json"),
+        );
         for s in self.engine.list_singers() {
             out.push(
                 Resource::new(
@@ -621,6 +632,9 @@ impl CantorMcp {
         if let Some(name) = uri.strip_prefix("cantor://schema/") {
             if name == "params" {
                 return json(serde_json::to_value(cantor_core::params::registry()).ok()?);
+            }
+            if name == "effects" {
+                return json(serde_json::to_value(cantor_core::effects::registry()).ok()?);
             }
             let entry = cantor_core::schema::registry()
                 .into_iter()

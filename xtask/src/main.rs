@@ -140,6 +140,10 @@ fn generated_schemas() -> Vec<(String, String)> {
         "params.json".into(),
         pretty(&cantor_core::params::registry()),
     ));
+    files.push((
+        "effects.json".into(),
+        pretty(&cantor_core::effects::registry()),
+    ));
     files.sort();
     files
 }

@@ -64,7 +64,8 @@ expression: snapshot_value(&imported)
           "jitter_ms": 12.0,
           "layers": 1,
           "seed": 0,
-          "spacing": 0.5
+          "spacing": 0.5,
+          "timbre": 0.5
         },
         "effects": [],
         "id": 1,

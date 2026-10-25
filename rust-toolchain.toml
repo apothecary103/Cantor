@@ -13,3 +13,5 @@ components = [
   "rustc-codegen-cranelift-preview",
 ]
 profile = "minimal"
+# Phonemizer plugins and the template build as WASI p2 components.
+targets = ["wasm32-wasip2"]

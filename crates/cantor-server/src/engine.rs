@@ -12,6 +12,7 @@ use cantor_core::{
     Revision, TakeId, TickRange, TrackId,
 };
 use cantor_io::project_file::{self, Compression};
+use cantor_phon::wasm::PluginSet;
 use cantor_render::cache::DiskCache;
 use cantor_render::render::{Quality, RenderTrace, Renderer};
 use schemars::JsonSchema;
@@ -28,6 +29,8 @@ pub struct EngineConfig {
     pub singer_paths: Vec<PathBuf>,
     /// Directories containing vocoder directories.
     pub vocoder_paths: Vec<PathBuf>,
+    /// Directories containing phonemizer plugins (`*.wasm`).
+    pub phonemizer_paths: Vec<PathBuf>,
     /// RMVPE model for analysis; `None` disables pitch analysis.
     pub rmvpe: Option<PathBuf>,
     /// Render cache.
@@ -37,8 +40,8 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
-    /// From `CANTOR_SINGERS`, `CANTOR_VOCODERS` (path lists), `CANTOR_RMVPE`,
-    /// `CANTOR_CACHE` and `CANTOR_RENDERS`.
+    /// From `CANTOR_SINGERS`, `CANTOR_VOCODERS`, `CANTOR_PHONEMIZER_PATH`
+    /// (path lists), `CANTOR_RMVPE`, `CANTOR_CACHE` and `CANTOR_RENDERS`.
     pub fn from_env() -> Self {
         let paths = |var: &str| {
             std::env::var_os(var)
@@ -51,6 +54,7 @@ impl EngineConfig {
         Self {
             singer_paths: paths("CANTOR_SINGERS"),
             vocoder_paths: paths("CANTOR_VOCODERS"),
+            phonemizer_paths: paths("CANTOR_PHONEMIZER_PATH"),
             rmvpe: std::env::var_os("CANTOR_RMVPE").map(PathBuf::from),
             render_dir: std::env::var_os("CANTOR_RENDERS")
                 .map(PathBuf::from)
@@ -58,6 +62,28 @@ impl EngineConfig {
             cache_dir: base.join("render"),
         }
     }
+}
+
+/// A loaded phonemizer plugin.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PhonemizerInfo {
+    /// Display name.
+    pub name: String,
+    /// Plugin version.
+    pub version: String,
+    /// Languages it phonemizes; it replaces voicebank dictionaries for them.
+    pub languages: Vec<String>,
+    /// The plugin file.
+    pub path: String,
+}
+
+/// Phonemizer plugins and the plugins that failed to load.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PhonemizerList {
+    /// Loaded plugins, in priority order.
+    pub plugins: Vec<PhonemizerInfo>,
+    /// Load errors, one per rejected plugin file.
+    pub errors: Vec<String>,
 }
 
 /// An engine failure. Each maps to a stable code for JSON-RPC and MCP.
@@ -256,6 +282,7 @@ pub struct Engine {
     renders: Mutex<BTreeMap<String, RenderRecord>>,
     backends: Mutex<HashMap<String, Arc<DiffSinger>>>,
     rmvpe: OnceLock<Option<Arc<Rmvpe>>>,
+    phonemizers: OnceLock<(Arc<PluginSet>, Vec<String>)>,
     next: AtomicU64,
 }
 
@@ -276,6 +303,7 @@ impl Engine {
             renders: Mutex::new(BTreeMap::new()),
             backends: Mutex::new(HashMap::new()),
             rmvpe: OnceLock::new(),
+            phonemizers: OnceLock::new(),
             next: AtomicU64::new(1),
         }
     }
@@ -553,9 +581,22 @@ impl Engine {
     pub fn get_singer_schema(&self, singer: &str) -> Result<SingerSchema> {
         let (info, _) = self.find_singer(singer)?;
         let backend = self.backend_for(singer)?;
+        let xsampa = backend
+            .languages()
+            .into_iter()
+            .filter_map(|lang| {
+                let map = backend.xsampa(&lang)?;
+                let pairs = map
+                    .pairs()
+                    .map(|(n, x)| (n.to_owned(), x.to_owned()))
+                    .collect();
+                Some((lang, pairs))
+            })
+            .collect();
         Ok(singers::schema(
             info,
             cantor_render::backend::Backend::params(backend.as_ref()),
+            xsampa,
         ))
     }
 
@@ -584,13 +625,48 @@ impl Engine {
         let vocoder = find_vocoder(&self.config.vocoder_paths, &info.vocoder)
             .ok_or_else(|| EngineError::NotFound(format!("vocoder `{}`", info.vocoder)))?;
         let b = Arc::new(
-            DiffSinger::load(&dir, &vocoder).map_err(|e| EngineError::Render(e.to_string()))?,
+            DiffSinger::load(&dir, &vocoder)
+                .map_err(|e| EngineError::Render(e.to_string()))?
+                .with_phonemizers(self.phonemizers().0.clone()),
         );
         self.backends
             .lock()
             .expect("backends lock")
             .insert(singer.to_owned(), b.clone());
         Ok(b)
+    }
+
+    /// Phonemizer plugins on the configured path, loaded once, with the
+    /// errors of plugins that failed to load.
+    fn phonemizers(&self) -> &(Arc<PluginSet>, Vec<String>) {
+        self.phonemizers.get_or_init(|| {
+            let (set, errors) = PluginSet::scan(&self.config.phonemizer_paths);
+            for e in &errors {
+                tracing::warn!("{e}");
+            }
+            (
+                Arc::new(set),
+                errors.iter().map(|e| e.to_string()).collect(),
+            )
+        })
+    }
+
+    /// Loaded phonemizer plugins and plugin load errors.
+    pub fn list_phonemizers(&self) -> PhonemizerList {
+        let (set, errors) = self.phonemizers();
+        PhonemizerList {
+            plugins: set
+                .plugins()
+                .iter()
+                .map(|p| PhonemizerInfo {
+                    name: p.name().to_owned(),
+                    version: p.version().to_owned(),
+                    languages: p.languages().to_vec(),
+                    path: p.path().display().to_string(),
+                })
+                .collect(),
+            errors: errors.clone(),
+        }
     }
 
     fn analyzer(&self) -> Option<Arc<Rmvpe>> {

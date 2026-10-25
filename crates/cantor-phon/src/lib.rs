@@ -1,12 +1,14 @@
 //! Phonemization: dictionaries, lyric parsing and phoneme placement.
 //!
-//! M2 ships dictionary lookup (the OpenUtau `dsdict.yaml` format used by
-//! DiffSinger voicebanks). The WASM phonemizer host, neural G2P and
-//! X-SAMPA mapping arrive in M5.
+//! Dictionary lookup (the OpenUtau `dsdict.yaml` format used by DiffSinger
+//! voicebanks), X-SAMPA mapping ([`xsampa`]) and the sandboxed WASM
+//! phonemizer host ([`wasm`]).
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 pub mod place;
+pub mod wasm;
+pub mod xsampa;
 
 use serde::Deserialize;
 use std::collections::HashMap;

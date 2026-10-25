@@ -30,6 +30,7 @@ fn engine(name: &str) -> Arc<Engine> {
     Arc::new(Engine::new(EngineConfig {
         singer_paths: vec![vb.parent().unwrap().to_path_buf()],
         vocoder_paths: vec![cantor_fixtures::dir()],
+        phonemizer_paths: vec![],
         rmvpe: Some(rmvpe),
         cache_dir: work.join("cache"),
         render_dir: work.join("renders"),
@@ -93,6 +94,7 @@ async fn tools_are_listed_with_accurate_annotations() {
         "describe_range",
         "list_singers",
         "get_singer_schema",
+        "list_phonemizers",
         "compare",
         "list_history",
     ] {

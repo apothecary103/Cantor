@@ -1,0 +1,17 @@
+# A hostile phonemizer for the sandbox tests in ../wasm_plugins.rs.
+[package]
+name = "sandbox-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cantor-plugin-sdk = { path = "../../../cantor-plugin-sdk" }
+
+[profile.release]
+opt-level = 1
+
+[workspace]

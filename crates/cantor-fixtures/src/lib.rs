@@ -3,6 +3,10 @@
 //! use. Model weights are never committed (CLAUDE.md).
 //!
 //! Location: `$CANTOR_FIXTURES`, else `<workspace>/tests/fixtures/downloaded`.
+//!
+//! [`utau`] generates a synthetic UTAU voicebank instead of downloading one.
+
+pub mod utau;
 
 use sha2::{Digest, Sha256};
 use std::io::Read;

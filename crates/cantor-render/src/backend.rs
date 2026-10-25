@@ -103,6 +103,28 @@ pub trait Backend: Send + Sync {
     fn acoustic(&self, input: &AcousticInput<'_>) -> Result<Vec<f32>, BackendError>;
     /// Audio from a mel spectrogram and f0 in Hz per frame.
     fn vocode(&self, mel: &[f32], f0_hz: &[f32]) -> Result<Vec<f32>, BackendError>;
+
+    /// Shifts the formants of acoustic features by `factor` (1 = unchanged,
+    /// above 1 = smaller, brighter voice), for doubling layers. The default
+    /// treats the features as a log-mel spectrogram on [`Backend::grid`] and
+    /// resamples each frame along the mel axis. Backends whose features are
+    /// something else return `None`, which the renderer reports.
+    fn warp_timbre(&self, mel: &[f32], factor: f32) -> Option<Vec<f32>> {
+        let bins = self.grid().mel_bins;
+        if bins == 0 || !mel.len().is_multiple_of(bins) {
+            return None;
+        }
+        let mut out = vec![0.0f32; mel.len()];
+        for (src, dst) in mel.chunks_exact(bins).zip(out.chunks_exact_mut(bins)) {
+            for (b, d) in dst.iter_mut().enumerate() {
+                let x = (b as f32 / factor).clamp(0.0, (bins - 1) as f32);
+                let i = (x.floor() as usize).min(bins - 2);
+                let u = x - i as f32;
+                *d = src[i] * (1.0 - u) + src[i + 1] * u;
+            }
+        }
+        Some(out)
+    }
 }
 
 /// Converts cents (MIDI × 100) to Hz.

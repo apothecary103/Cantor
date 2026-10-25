@@ -82,6 +82,7 @@ async fn websocket_serves_json_rpc() {
     let engine = Arc::new(cantor_server::Engine::new(cantor_server::EngineConfig {
         singer_paths: vec![],
         vocoder_paths: vec![],
+        phonemizer_paths: vec![],
         rmvpe: None,
         cache_dir: dir.join("cache"),
         render_dir: dir.join("renders"),

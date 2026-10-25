@@ -3,6 +3,7 @@
 use cantor_core::params::{self, ParamDescriptor};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// A singer available to render with.
@@ -49,6 +50,9 @@ pub struct SingerSchema {
     pub modes: Vec<String>,
     /// Retake dimensions the backend can vary.
     pub retake_dims: Vec<String>,
+    /// X-SAMPA spelling of each native phoneme, by language. Phoneme
+    /// overrides with `alphabet: "x_sampa"` use the right-hand symbols.
+    pub xsampa: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 /// A parameter and whether a singer supports it.
@@ -151,8 +155,13 @@ pub fn describe(dir: &Path) -> Option<SingerInfo> {
 }
 
 /// The schema of a singer given the parameters its backend honors.
-pub fn schema(info: SingerInfo, supported: &[&str]) -> SingerSchema {
+pub fn schema(
+    info: SingerInfo,
+    supported: &[&str],
+    xsampa: BTreeMap<String, BTreeMap<String, String>>,
+) -> SingerSchema {
     SingerSchema {
+        xsampa,
         parameters: params::registry()
             .iter()
             .map(|d| ParamSupport {

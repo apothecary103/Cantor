@@ -100,7 +100,7 @@ jobs:
       - run: nix develop --command cargo xtask miri
 
   plugin-sdk-stable:
-    name: cantor-plugin-sdk on stable Rust
+    name: plugin SDK and phonemizer template on stable Rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -116,6 +116,18 @@ jobs:
             cargo test --locked \
               --manifest-path "$GITHUB_WORKSPACE/crates/cantor-plugin-sdk/Cargo.toml" \
               --target-dir "$GITHUB_WORKSPACE/target/stable"'
+      - name: phonemizer template (native tests, wasm32-wasip2 component)
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          nix develop .#stable --command bash -c '
+            cd "$RUNNER_TEMP" &&
+            M="$GITHUB_WORKSPACE/templates/phonemizer/Cargo.toml" &&
+            cargo test --locked --manifest-path "$M" \
+              --target-dir "$GITHUB_WORKSPACE/target/template" &&
+            cargo build --locked --release --target wasm32-wasip2 --manifest-path "$M" \
+              --target-dir "$GITHUB_WORKSPACE/target/template" &&
+            ls -l "$GITHUB_WORKSPACE"/target/template/wasm32-wasip2/release/*.wasm'
 
   mcp-conformance:
     # Official MCP conformance suite, required scenarios for the pinned spec

@@ -2,6 +2,8 @@
 
 use crate::backend::{AcousticInput, Backend, PhraseInput, Prediction, cents_to_hz};
 use crate::cache::{DiskCache, Kind};
+use crate::double::{self, pan_gains};
+use crate::fx::{self, Stereo};
 use crate::key::{Key, KeyBuilder, audio_hash};
 use crate::mix::{PlacedAudio, mix};
 use crate::phrase::{Phrase, split};
@@ -181,7 +183,7 @@ impl Renderer {
         let mut trace = RenderTrace::default();
         let any_solo = project.tracks.iter().any(|t| t.mix.solo);
 
-        let mut tracks: Vec<(&Track, Vec<f32>, Vec<Phrase>)> = Vec::new();
+        let mut tracks: Vec<(&Track, Vec<f32>, Vec<Phrase>, Stereo)> = Vec::new();
         for track in &project.tracks {
             if track.mix.mute || (any_solo && !track.mix.solo) {
                 continue;
@@ -197,47 +199,75 @@ impl Renderer {
             }
             let mut rendered = Vec::with_capacity(phrases.len());
             for phrase in &phrases {
-                let (audio, t0, pt) =
+                let (layers, t0, pt) =
                     self.render_phrase(track, phrase, &tempo, quality, &mut diagnostics)?;
                 trace.phrases.push(pt);
-                rendered.push((t0, audio, phrase));
+                rendered.push((t0, layers, phrase));
             }
+            let n_layers = rendered.first().map_or(1, |r| r.1.len());
             let end = rendered
                 .iter()
-                .map(|(t0, a, _)| t0 + a.len() as f64 / f64::from(sr))
-                .fold(0.0, f64::max);
-            let placed: Vec<PlacedAudio<'_>> = rendered
-                .iter()
-                .enumerate()
-                .map(|(i, (t0, audio, phrase))| {
-                    let boundary = |a: &Phrase, b: &Phrase| (a.end_sec() + b.start_sec()) / 2.0;
-                    PlacedAudio {
-                        start_sec: *t0,
-                        samples: audio,
-                        lo_sec: i.checked_sub(1).map(|j| boundary(rendered[j].2, phrase)),
-                        hi_sec: rendered.get(i + 1).map(|n| boundary(phrase, n.2)),
-                    }
+                .flat_map(|(t0, layers, _)| {
+                    layers
+                        .iter()
+                        .map(move |l| t0 + l.offset_sec + l.audio.len() as f64 / f64::from(sr))
                 })
-                .collect();
+                .fold(0.0, f64::max);
             let len = (end * f64::from(sr)).ceil() as usize;
-            let mono = mix(&placed, sr, len);
-            drop(placed);
+            // Each layer is mixed on its own timeline (its phrases cross-fade
+            // with each other), then placed in the stereo field.
+            let mut mono = Vec::new();
+            let mut stereo = Stereo::default();
+            for k in 0..n_layers {
+                let placed: Vec<PlacedAudio<'_>> = rendered
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (t0, layers, phrase))| {
+                        let boundary = |a: &Phrase, b: &Phrase| (a.end_sec() + b.start_sec()) / 2.0;
+                        let offset = layers[k].offset_sec;
+                        PlacedAudio {
+                            start_sec: t0 + offset,
+                            samples: &layers[k].audio,
+                            lo_sec: i
+                                .checked_sub(1)
+                                .map(|j| boundary(rendered[j].2, phrase) + offset),
+                            hi_sec: rendered.get(i + 1).map(|n| boundary(phrase, n.2) + offset),
+                        }
+                    })
+                    .collect();
+                let layer = mix(&placed, sr, len);
+                if k == 0 {
+                    stereo = Stereo::from_mono(&layer);
+                    mono = layer;
+                } else {
+                    let first = &rendered[0].1[k];
+                    let (pl, pr) = pan_gains(first.pan);
+                    let (gl, gr) = ((first.gain * pl) as f32, (first.gain * pr) as f32);
+                    for (i, s) in layer.iter().enumerate() {
+                        stereo.l[i] += s * gl;
+                        stereo.r[i] += s * gr;
+                    }
+                }
+            }
             drop(rendered);
-            tracks.push((track, mono, phrases));
+            fx::process_chain(&track.effects, sr, &mut stereo);
+            tracks.push((track, mono, phrases, stereo));
         }
 
-        let len = tracks.iter().map(|(_, a, _)| a.len()).max().unwrap_or(0);
+        let len = tracks.iter().map(|t| t.3.len()).max().unwrap_or(0);
         let mut samples = vec![0.0f32; len * 2];
-        for (track, mono, _) in &tracks {
+        for (track, _, _, stereo) in &tracks {
             let gain = 10f64.powf(track.mix.gain_db / 20.0);
             // Equal-power pan.
             let angle = (track.mix.pan.clamp(-1.0, 1.0) + 1.0) * std::f64::consts::FRAC_PI_4;
             let (gl, gr) = ((gain * angle.cos()) as f32, (gain * angle.sin()) as f32);
-            for (i, s) in mono.iter().enumerate() {
-                samples[2 * i] += s * gl;
-                samples[2 * i + 1] += s * gr;
+            for (i, (l, r)) in stereo.l.iter().zip(&stereo.r).enumerate() {
+                samples[2 * i] += l * gl;
+                samples[2 * i + 1] += r * gr;
             }
         }
+        let tracks: Vec<(&Track, Vec<f32>, Vec<Phrase>)> =
+            tracks.into_iter().map(|(t, m, p, _)| (t, m, p)).collect();
         let analysis = match &self.analyzer {
             Some(x) => Some(self.analyze(x.as_ref(), &tempo, &tracks, &samples, sr)?),
             None => None,
@@ -365,6 +395,14 @@ impl CachedF0 {
     }
 }
 
+/// One layer of a rendered phrase: the lead (layer 0) or a double.
+struct LayerAudio {
+    audio: Vec<f32>,
+    offset_sec: f64,
+    pan: f64,
+    gain: f64,
+}
+
 impl Renderer {
     fn render_phrase(
         &self,
@@ -373,7 +411,7 @@ impl Renderer {
         tempo: &TempoMap,
         quality: Quality,
         diagnostics: &mut Vec<Diagnostic>,
-    ) -> Result<(Vec<f32>, f64, PhraseTrace), RenderError> {
+    ) -> Result<(Vec<LayerAudio>, f64, PhraseTrace), RenderError> {
         let b = self.backend.as_ref();
         let grid = b.grid();
         let fs = grid.frame_secs();
@@ -489,28 +527,100 @@ impl Renderer {
             prediction_cached,
             audio_key: audio_key.hex(),
         };
-        if let Some(audio) = self.cache.get_f32(Kind::Audio, &audio_key) {
-            return Ok((audio, t0, trace(Outcome::CacheHit)));
-        }
-        let (mel, outcome) = match self.cache.get_f32(Kind::Mel, &mel_key) {
-            Some(mel) => (mel, Outcome::VocoderFastPath),
+        let doubles = double::layers(&track.doubling, phrase.id, frames, fs);
+        let double_keys: Vec<_> = doubles
+            .iter()
+            .map(|l| {
+                let mut k = KeyBuilder::new("double");
+                k.key("audio", &audio_key)
+                    .u64("layer", u64::from(l.index))
+                    .u64("formant", u64::from(l.formant.to_bits()));
+                for c in &l.detune_cents {
+                    k.u64("detune", c.to_bits());
+                }
+                k.finish()
+            })
+            .collect();
+
+        // The mel is fetched (or synthesized) only if some layer needs it.
+        let mut mel: Option<(Vec<f32>, Outcome)> = None;
+        let get_mel = |mel: &mut Option<(Vec<f32>, Outcome)>| -> Result<(), RenderError> {
+            if mel.is_none() {
+                *mel = Some(match self.cache.get_f32(Kind::Mel, &mel_key) {
+                    Some(m) => (m, Outcome::VocoderFastPath),
+                    None => {
+                        let m = b
+                            .acoustic(&AcousticInput {
+                                phones: &pred.phones,
+                                f0_ref_hz: &f0_ref_hz,
+                                variance: &variance,
+                                steps,
+                                seed: phrase.seeds.acoustic,
+                            })
+                            .map_err(backend_err)?;
+                        self.cache.put_f32(Kind::Mel, &mel_key, &m)?;
+                        (m, Outcome::Full)
+                    }
+                });
+            }
+            Ok(())
+        };
+
+        let (lead, outcome) = match self.cache.get_f32(Kind::Audio, &audio_key) {
+            Some(audio) => (audio, Outcome::CacheHit),
             None => {
-                let mel = b
-                    .acoustic(&AcousticInput {
-                        phones: &pred.phones,
-                        f0_ref_hz: &f0_ref_hz,
-                        variance: &variance,
-                        steps,
-                        seed: phrase.seeds.acoustic,
-                    })
-                    .map_err(backend_err)?;
-                self.cache.put_f32(Kind::Mel, &mel_key, &mel)?;
-                (mel, Outcome::Full)
+                get_mel(&mut mel)?;
+                let (m, outcome) = mel.as_ref().expect("mel was just fetched");
+                let audio = b.vocode(m, &f0_hz).map_err(backend_err)?;
+                self.cache.put_f32(Kind::Audio, &audio_key, &audio)?;
+                (audio, *outcome)
             }
         };
-        let audio = b.vocode(&mel, &f0_hz).map_err(backend_err)?;
-        self.cache.put_f32(Kind::Audio, &audio_key, &audio)?;
-        Ok((audio, t0, trace(outcome)))
+        let mut layers = vec![LayerAudio {
+            audio: lead,
+            offset_sec: 0.0,
+            pan: 0.0,
+            gain: 1.0,
+        }];
+        let mut timbre_unsupported = false;
+        for (l, key) in doubles.iter().zip(&double_keys) {
+            let audio = match self.cache.get_f32(Kind::Audio, key) {
+                Some(audio) => audio,
+                None => {
+                    get_mel(&mut mel)?;
+                    let (m, _) = mel.as_ref().expect("mel was just fetched");
+                    let warped = b.warp_timbre(m, l.formant);
+                    timbre_unsupported |= warped.is_none();
+                    let f0: Vec<f32> = f0_hz
+                        .iter()
+                        .zip(&l.detune_cents)
+                        .map(|(&hz, &c)| (f64::from(hz) * 2f64.powf(c / 1200.0)) as f32)
+                        .collect();
+                    let audio = b
+                        .vocode(warped.as_deref().unwrap_or(m), &f0)
+                        .map_err(backend_err)?;
+                    self.cache.put_f32(Kind::Audio, key, &audio)?;
+                    audio
+                }
+            };
+            layers.push(LayerAudio {
+                audio,
+                offset_sec: l.offset_sec,
+                pan: l.pan,
+                gain: l.gain,
+            });
+        }
+        if timbre_unsupported {
+            diagnostics.push(Diagnostic::warning(
+                "render.doubling_timbre_unsupported",
+                format!(
+                    "{} cannot vary timbre between doubling layers; only pitch and timing vary",
+                    b.id()
+                ),
+                Some(EntityRef::Track { id: track.id }),
+            ));
+        }
+        Ok((layers, t0, trace(outcome)))
     }
 }
 
@@ -581,20 +691,6 @@ fn check_track_support(track: &Track, b: &dyn Backend, out: &mut Vec<Diagnostic>
         }
     }
     let t = Some(EntityRef::Track { id: track.id });
-    if !track.effects.is_empty() {
-        out.push(Diagnostic::warning(
-            "render.effects_unsupported",
-            "the effects chain is not rendered yet (milestone M5); effects are ignored",
-            t.clone(),
-        ));
-    }
-    if track.doubling.layers > 1 {
-        out.push(Diagnostic::warning(
-            "render.doubling_unsupported",
-            "voice doubling is not rendered yet (milestone M5); one layer is rendered",
-            t.clone(),
-        ));
-    }
     if !track.voice_mix.is_empty() {
         out.push(Diagnostic::warning(
             "render.voice_mix_unsupported",

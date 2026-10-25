@@ -1,0 +1,255 @@
+[
+  {
+    "kind": "eq",
+    "name": "EQ",
+    "description": "High-pass, low shelf, two peaking bands and a high shelf.",
+    "params": [
+      {
+        "id": "high_pass_hz",
+        "name": "High-pass",
+        "unit": "Hz",
+        "min": 0.0,
+        "max": 1000.0,
+        "default": 0.0,
+        "description": "Second-order high-pass cutoff; 0 turns it off."
+      },
+      {
+        "id": "low_freq_hz",
+        "name": "Low shelf frequency",
+        "unit": "Hz",
+        "min": 20.0,
+        "max": 1000.0,
+        "default": 120.0,
+        "description": "Corner of the low shelf."
+      },
+      {
+        "id": "low_gain_db",
+        "name": "Low shelf gain",
+        "unit": "dB",
+        "min": -24.0,
+        "max": 24.0,
+        "default": 0.0,
+        "description": "Boost or cut below the low shelf corner."
+      },
+      {
+        "id": "mid_freq_hz",
+        "name": "Mid frequency",
+        "unit": "Hz",
+        "min": 100.0,
+        "max": 10000.0,
+        "default": 1000.0,
+        "description": "Centre of the peaking band."
+      },
+      {
+        "id": "mid_gain_db",
+        "name": "Mid gain",
+        "unit": "dB",
+        "min": -24.0,
+        "max": 24.0,
+        "default": 0.0,
+        "description": "Boost or cut of the peaking band."
+      },
+      {
+        "id": "mid_q",
+        "name": "Mid Q",
+        "unit": "ratio",
+        "min": 0.1,
+        "max": 10.0,
+        "default": 1.0,
+        "description": "Bandwidth of the peaking band; higher is narrower."
+      },
+      {
+        "id": "presence_freq_hz",
+        "name": "Presence frequency",
+        "unit": "Hz",
+        "min": 1000.0,
+        "max": 12000.0,
+        "default": 4000.0,
+        "description": "Centre of the presence band."
+      },
+      {
+        "id": "presence_gain_db",
+        "name": "Presence gain",
+        "unit": "dB",
+        "min": -24.0,
+        "max": 24.0,
+        "default": 0.0,
+        "description": "Boost or cut of the presence band."
+      },
+      {
+        "id": "presence_q",
+        "name": "Presence Q",
+        "unit": "ratio",
+        "min": 0.1,
+        "max": 10.0,
+        "default": 1.0,
+        "description": "Bandwidth of the presence band."
+      },
+      {
+        "id": "high_freq_hz",
+        "name": "High shelf frequency",
+        "unit": "Hz",
+        "min": 2000.0,
+        "max": 20000.0,
+        "default": 10000.0,
+        "description": "Corner of the high shelf."
+      },
+      {
+        "id": "high_gain_db",
+        "name": "High shelf gain",
+        "unit": "dB",
+        "min": -24.0,
+        "max": 24.0,
+        "default": 0.0,
+        "description": "Boost or cut above the high shelf corner."
+      }
+    ]
+  },
+  {
+    "kind": "compressor",
+    "name": "Compressor",
+    "description": "Stereo-linked feed-forward compressor with a soft knee.",
+    "params": [
+      {
+        "id": "threshold_db",
+        "name": "Threshold",
+        "unit": "dBFS",
+        "min": -60.0,
+        "max": 0.0,
+        "default": -18.0,
+        "description": "Level above which gain is reduced."
+      },
+      {
+        "id": "ratio",
+        "name": "Ratio",
+        "unit": "ratio",
+        "min": 1.0,
+        "max": 20.0,
+        "default": 3.0,
+        "description": "Input dB above threshold per output dB."
+      },
+      {
+        "id": "knee_db",
+        "name": "Knee",
+        "unit": "dB",
+        "min": 0.0,
+        "max": 24.0,
+        "default": 6.0,
+        "description": "Width of the soft knee around the threshold."
+      },
+      {
+        "id": "attack_ms",
+        "name": "Attack",
+        "unit": "ms",
+        "min": 0.1,
+        "max": 200.0,
+        "default": 10.0,
+        "description": "Time to react to a rise in level."
+      },
+      {
+        "id": "release_ms",
+        "name": "Release",
+        "unit": "ms",
+        "min": 5.0,
+        "max": 2000.0,
+        "default": 120.0,
+        "description": "Time to recover after the level falls."
+      },
+      {
+        "id": "makeup_db",
+        "name": "Makeup gain",
+        "unit": "dB",
+        "min": -12.0,
+        "max": 24.0,
+        "default": 0.0,
+        "description": "Gain applied after compression."
+      }
+    ]
+  },
+  {
+    "kind": "de_esser",
+    "name": "De-esser",
+    "description": "Reduces the sibilance band when it exceeds the threshold.",
+    "params": [
+      {
+        "id": "freq_hz",
+        "name": "Frequency",
+        "unit": "Hz",
+        "min": 2000.0,
+        "max": 12000.0,
+        "default": 6000.0,
+        "description": "Lower edge of the sibilance band."
+      },
+      {
+        "id": "threshold_db",
+        "name": "Threshold",
+        "unit": "dBFS",
+        "min": -60.0,
+        "max": 0.0,
+        "default": -30.0,
+        "description": "Sibilance-band level above which it is reduced."
+      },
+      {
+        "id": "range_db",
+        "name": "Range",
+        "unit": "dB",
+        "min": 0.0,
+        "max": 24.0,
+        "default": 8.0,
+        "description": "Largest reduction of the sibilance band."
+      }
+    ]
+  },
+  {
+    "kind": "reverb",
+    "name": "Reverb",
+    "description": "Room simulation with parallel combs and series all-passes.",
+    "params": [
+      {
+        "id": "room_size",
+        "name": "Room size",
+        "unit": "ratio",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 0.5,
+        "description": "Larger rooms decay more slowly."
+      },
+      {
+        "id": "damping",
+        "name": "Damping",
+        "unit": "ratio",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 0.5,
+        "description": "High-frequency absorption of the walls."
+      },
+      {
+        "id": "pre_delay_ms",
+        "name": "Pre-delay",
+        "unit": "ms",
+        "min": 0.0,
+        "max": 200.0,
+        "default": 20.0,
+        "description": "Gap between the dry sound and the first reflections."
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "unit": "ratio",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 1.0,
+        "description": "Stereo width of the reverberation."
+      },
+      {
+        "id": "mix",
+        "name": "Mix",
+        "unit": "ratio",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 0.2,
+        "description": "Wet share of the output; 0 is dry."
+      }
+    ]
+  }
+]

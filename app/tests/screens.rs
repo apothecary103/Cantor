@@ -22,6 +22,7 @@ fn engine() -> Arc<Engine> {
     Arc::new(Engine::new(EngineConfig {
         singer_paths: vec![],
         vocoder_paths: vec![],
+        phonemizer_paths: vec![],
         rmvpe: None,
         cache_dir: tmp.join("c"),
         render_dir: tmp.join("r"),
