@@ -88,7 +88,7 @@ Done when:
       message without Metal (vendored gpui-kit with a `runtime-shaders`
       feature, 0018)
 
-## M5 Breadth — in progress (branch m5-breadth)
+## M5 Breadth — done (CI green at 9d1219b, PR #2)
 The spec lists M5's parts without "done when" items; these are the
 criteria used here.
 Parts:
@@ -133,6 +133,21 @@ Done when:
       and the audio path (`cantor-backends/tests/svsio.rs`)
 - [x] One render call mixes a DiffSinger and a UTAU track
       (`cantor-server/tests/multi_singer.rs`, `cantor-cli/tests/render_cli.rs`)
+
+## M6 DAW bridge — in progress (branch m6-bridge)
+Criteria used here (the spec gives the goal without "done when" items):
+- [x] The engine publishes a render to a shared-memory channel and reads
+      back host transport (`cantor-server/tests/bridge.rs`); clients:
+      JSON-RPC, MCP (`bridge_publish`, `bridge_status`), Python, app
+- [x] Hosted in-process (clack-host), the CLAP plugin outputs the published
+      audio at the host song position across sample rates, is silent when
+      stopped, and reports transport (`cantor-bridge-clap/tests/host.rs`)
+- [x] The channel protocol never yields torn blocks under a racing publisher
+      (`cantor-bridge` tests; in `xtask miri` and `xtask tsan`)
+- [x] clap-validator 0.4.1 passes (0 failures) via `cargo xtask bridge
+      --validate`, locally and in CI on macOS and Linux
+- [x] VST3 and AUv2 wrappers build with clap-wrapper (`--wrap`); macOS CI
+      runs auval on the AU
 
 ## Open items
 - Confirm with OpenVPI that the in-memory noise rewrite fits the Qixuan

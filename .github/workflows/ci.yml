@@ -50,6 +50,11 @@ jobs:
         run: nix flake check
       - name: cargo xtask ci
         run: nix develop --command cargo xtask ci
+      - name: DAW bridge plugin passes clap-validator
+        run: nix develop --command cargo xtask bridge --validate
+      - name: DAW bridge VST3 + AUv2 wrappers build and pass auval (macOS)
+        if: runner.os == 'macOS'
+        run: nix develop --command cargo xtask bridge --auval
       - name: precompiled-shader check (macOS)
         if: runner.os == 'macOS'
         run: nix develop --command cargo xtask shader-check

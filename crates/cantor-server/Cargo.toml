@@ -14,6 +14,7 @@ cantor-render.workspace = true
 cantor-backends.workspace = true
 cantor-analysis.workspace = true
 cantor-phon.workspace = true
+cantor-bridge.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true

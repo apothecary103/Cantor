@@ -27,6 +27,34 @@
             sha256 = "sha256-ZBbs8/vrgUCyEPZ+2MU1MQEIDLVI05q8t1JRuFFQytw=";
           };
 
+          # Latest stable Rust (cantor-plugin-sdk, the phonemizer template,
+          # and tools built from source).
+          stableRust = fenix.packages.${system}.stable.withComponents [
+            "cargo"
+            "rustc"
+            "rust-std"
+          ];
+
+          # Validates the DAW bridge plugin (`cargo xtask bridge --validate`).
+          # Not in nixpkgs; built from the release tag.
+          clap-validator =
+            (pkgs.makeRustPlatform {
+              cargo = stableRust;
+              rustc = stableRust;
+            }).buildRustPackage
+              rec {
+                pname = "clap-validator";
+                version = "0.4.1";
+                src = pkgs.fetchFromGitHub {
+                  owner = "free-audio";
+                  repo = "clap-validator";
+                  rev = version;
+                  hash = "sha256-4GmmZIMRoPUEbsT34iCaOWRhYmhMonF9BXnc/rFQV0M=";
+                };
+                cargoHash = "sha256-m6VebZM8jVm22Xk8URpHF+UAHOJWYC74Ha3bpFuz1VU=";
+                doCheck = false;
+              };
+
           # Libraries GPUI and cpal load at runtime on Linux.
           linuxRuntimeLibs = with pkgs; [
             vulkan-loader wayland libxkbcommon fontconfig freetype
@@ -91,6 +119,7 @@
               (python3.withPackages (ps: [ ps.pyzmq ps.msgpack ]))
               maturin
               wasm-tools
+              clap-validator
               nixfmt
               # Test fixtures are downloaded by checksum and unzipped.
               curl
@@ -125,11 +154,7 @@
           devShells.stable = pkgs.mkShell {
             nativeBuildInputs = [
               (fenix.packages.${system}.combine [
-                (fenix.packages.${system}.stable.withComponents [
-                  "cargo"
-                  "rustc"
-                  "rust-std"
-                ])
+                stableRust
                 # Phonemizer plugins are WASI p2 components.
                 fenix.packages.${system}.targets.wasm32-wasip2.stable.rust-std
               ])
