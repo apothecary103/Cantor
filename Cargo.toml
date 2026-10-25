@@ -38,6 +38,9 @@ ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "
 clap = { version = "=4.6.7", features = ["derive"] }
 tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
+rmcp = { version = "=3.7.0", features = ["server", "macros", "elicitation", "request-state", "transport-streamable-http-server"] }
+tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "signal", "io-util"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
 
 proptest = "=1.12.0"
 insta = { version = "=1.49.0", features = ["json"] }

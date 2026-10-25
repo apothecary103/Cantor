@@ -90,6 +90,25 @@ jobs:
               --manifest-path "$GITHUB_WORKSPACE/crates/cantor-plugin-sdk/Cargo.toml" \
               --target-dir "$GITHUB_WORKSPACE/target/stable"'
 
+  mcp-conformance:
+    # Official MCP conformance suite, required scenarios for the pinned spec
+    # revision, against the cantor-mcp fixture server (docs/decisions/0013).
+    # xtask keeps npx's cache in target/npm-cache.
+    name: MCP conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-conformance-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'xtask/src/main.rs') }}
+          restore-keys: cargo-${{ runner.os }}-conformance-
+      - run: nix develop --command cargo xtask conformance
+
   tsan:
     # Stub until cantor-audio lands: runs the TSAN_CRATES list in xtask,
     # currently cantor-core's tests (including the cross-thread snapshot test).
