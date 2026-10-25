@@ -3,17 +3,9 @@
 - **Toolkit:** gpui-kit 0.8.0 only (it pins gpui-pre 0.3.9). GPUI builds on
   the pinned nightly with the next-generation trait solver; no
   `-Znext-solver=coherence` fallback was needed.
-- **Runtime shaders — spec mismatch.** CLAUDE.md asks for an app feature
-  `runtime-shaders` forwarding to gpui-kit's runtime-shader feature, with
-  release builds using `--no-default-features` for precompiled shaders.
-  gpui-kit 0.8.0 has no such feature: it enables `gpui_platform`'s
-  `runtime_shaders` unconditionally, and Cargo features cannot be turned
-  off downstream. The app keeps a `runtime-shaders` default feature as a
-  marker and `cargo xtask shader-check` runs `cargo check -p app
-  --no-default-features` on macOS when Xcode's Metal compiler is present
-  (skipping with a message otherwise), but that build still uses runtime
-  shaders until gpui-kit exposes a toggle. Upstream ask: make
-  `runtime_shaders` a gpui-kit feature.
+- **Runtime shaders:** gpui-kit 0.8.0 forces GPUI's runtime shaders on;
+  superseded by 0018, which vendors gpui-kit with a `runtime-shaders`
+  feature so `--no-default-features` precompiles Metal shaders.
 - **Architecture:** `cantor_app::state::Editor` holds the view model
   (viewport, selection, cursor, Script Log, macro recording) and applies
   every edit as an Op through `cantor_server::Engine` — the same API the

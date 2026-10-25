@@ -517,21 +517,117 @@ fn shader_check() -> Result {
         eprintln!("shader-check: skipped (only macOS precompiles Metal shaders)");
         return Ok(());
     }
-    let metal = Command::new("/usr/bin/xcrun")
-        .args(["-f", "metal"])
-        .output();
-    match metal {
-        Ok(out) if out.status.success() => run(
-            "cargo check -p app --no-default-features",
-            cargo().args(["check", "--locked", "-p", "app", "--no-default-features"]),
+    // The Nix shell's xcrun and DEVELOPER_DIR point at an SDK without the
+    // Metal compiler. Find the system Xcode and route only `xcrun` to it.
+    let xcode = Command::new("/usr/bin/xcode-select")
+        .arg("-p")
+        .env_remove("DEVELOPER_DIR")
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned());
+    let metal = xcode.as_ref().is_some_and(|dir| {
+        Command::new("/usr/bin/xcrun")
+            .args(["-sdk", "macosx", "-f", "metal"])
+            .env("DEVELOPER_DIR", dir)
+            .env_remove("SDKROOT")
+            .output()
+            .is_ok_and(|out| out.status.success())
+    });
+    let Some(xcode) = xcode.filter(|_| metal) else {
+        eprintln!(
+            "shader-check: skipped — the Metal toolchain (xcrun metal) is not available here; \
+             release builds run outside Nix with full Xcode"
+        );
+        return Ok(());
+    };
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root().join("target"));
+    let shim = target.join("shader-check/bin");
+    std::fs::create_dir_all(&shim).map_err(|e| format!("{}: {e}", shim.display()))?;
+    let xcrun = shim.join("xcrun");
+    std::fs::write(
+        &xcrun,
+        format!(
+            "#!/bin/sh\nunset SDKROOT\nexport DEVELOPER_DIR='{xcode}'\nexec /usr/bin/xcrun \"$@\"\n"
         ),
-        _ => {
-            eprintln!(
-                "shader-check: skipped — the Metal toolchain (xcrun metal) is not available here; \
-                 release builds run outside Nix with full Xcode"
-            );
+    )
+    .map_err(|e| format!("{}: {e}", xcrun.display()))?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&xcrun, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("{}: {e}", xcrun.display()))?;
+    }
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let path =
+        std::env::join_paths(std::iter::once(shim.clone()).chain(std::env::split_paths(&path)))
+            .map_err(|e| e.to_string())?;
+    let tree = cargo()
+        .args(["tree", "--locked", "-p", "app", "--no-default-features"])
+        .args(["-e", "features", "-i", "gpui-pre-apple"])
+        .output()
+        .map_err(|e| format!("cargo tree: {e}"))?;
+    if !tree.status.success() {
+        return Err(format!(
+            "cargo tree failed: {}",
+            String::from_utf8_lossy(&tree.stderr)
+        ));
+    }
+    if String::from_utf8_lossy(&tree.stdout).contains("runtime_shaders") {
+        return Err(
+            "shader-check: `runtime_shaders` is still enabled without the app's \
+                    `runtime-shaders` feature"
+                .into(),
+        );
+    }
+    let started = std::time::SystemTime::now();
+    run(
+        "cargo check -p app --no-default-features (precompiled Metal shaders)",
+        cargo()
+            .args(["check", "--locked", "-p", "app", "--no-default-features"])
+            .env("PATH", path),
+    )?;
+    // gpui's build script writes shaders.metallib only on the precompiled
+    // path; the runtime-shader path skips the Metal compiler entirely.
+    // Cargo lays build scripts out as build/<pkg>-<hash>/out or, with the
+    // newer build-dir layout, build/<pkg>/<hash>/out.
+    let build = target.join("debug/build");
+    let dirs = |dir: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .collect()
+    };
+    let metallib = dirs(&build)
+        .into_iter()
+        .filter(|dir| {
+            dir.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("gpui-pre-apple"))
+        })
+        .flat_map(|dir| {
+            let mut outs = vec![dir.join("out")];
+            outs.extend(dirs(&dir).into_iter().map(|hash| hash.join("out")));
+            outs
+        })
+        .map(|out| out.join("shaders.metallib"))
+        .filter_map(|lib| Some((std::fs::metadata(&lib).ok()?.modified().ok()?, lib)))
+        .max();
+    match metallib {
+        Some((modified, lib)) => {
+            let fresh = if modified >= started {
+                "built now"
+            } else {
+                "up to date"
+            };
+            eprintln!("shader-check: precompiled {} ({fresh})", lib.display());
             Ok(())
         }
+        None => Err(format!(
+            "shader-check: no shaders.metallib under {}; GPUI did not precompile its shaders",
+            build.display()
+        )),
     }
 }
 

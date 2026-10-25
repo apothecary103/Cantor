@@ -83,8 +83,10 @@ Done when:
 - [x] The app follows the visual direction, checked against
       docs/screens/editor-{dark,light}.png (`app/tests/screens.rs`)
 - [x] macOS CI runs `cargo check -p app --no-default-features` via
-      `cargo xtask shader-check`, skipped with a message without Metal
-      (but see 0017: gpui-kit has no runtime-shader toggle)
+      `cargo xtask shader-check`, which compiles GPUI's Metal shaders with
+      the system Xcode and fails without `shaders.metallib`; skipped with a
+      message without Metal (vendored gpui-kit with a `runtime-shaders`
+      feature, 0018)
 
 ## Open items
 - Confirm with OpenVPI that the in-memory noise rewrite fits the Qixuan
@@ -102,7 +104,7 @@ Done when:
 - Multi-singer projects render one singer per call (0015).
 - macOS wheels built in the Nix shell link Nix's libiconv; release wheels
   must be built outside Nix like release app builds.
-- gpui-kit 0.8.0 always enables runtime shaders; precompiled-shader release
-  builds need a gpui-kit toggle (0017).
+- gpui-kit is vendored to make runtime shaders optional (0018); drop the
+  copy when upstream adds the toggle.
 - Not in M4: audio playback (cantor-audio), expression pad, Python console,
   vocal-mode selectors, voice-to-MIDI.

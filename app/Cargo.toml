@@ -13,11 +13,11 @@ path = "src/main.rs"
 
 [features]
 # Dev builds in the Nix shell use GPUI's runtime-compiled shaders because
-# Xcode's Metal compiler is unavailable there. gpui-kit 0.8.0 enables
-# runtime shaders unconditionally and exposes no toggle, so this feature is
-# currently a marker; see docs/decisions/0017-desktop-app.md.
+# Xcode's Metal compiler is unavailable there. macOS release builds run
+# outside Nix with `--no-default-features` and precompile them; see
+# docs/decisions/0018-precompiled-shaders.md.
 default = ["runtime-shaders"]
-runtime-shaders = []
+runtime-shaders = ["gpui-kit/runtime-shaders"]
 
 [lib]
 name = "cantor_app"
