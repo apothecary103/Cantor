@@ -10,8 +10,9 @@ of users equally:
 - **AI agents** composing, tuning, rendering and evaluating vocals end to end
   over MCP, with numeric feedback on every render.
 
-> **Status: pre-alpha.** Cantor is being built milestone by milestone (see
-> [Roadmap](#roadmap)). Most features below are planned, not yet available.
+> **Status: pre-alpha.** Milestones M1–M7 are implemented (see
+> [Roadmap](#roadmap) and [PROGRESS.md](PROGRESS.md)); expect rough edges,
+> no packaged releases yet, and audio playback still to come.
 
 ## Why Cantor
 
@@ -27,7 +28,7 @@ of users equally:
 - **Works with existing voices.** Runs DiffSinger ONNX voicebanks and classic
   UTAU (oto.ini) banks.
 
-## Planned features
+## Features
 
 **Editing:** piano roll with pitch, phoneme and parameter lanes; smart pitch
 handles; phoneme timing lane; retakes kept as switchable take lanes; layered
@@ -36,10 +37,16 @@ branching history with A/B compare; macro recorder.
 
 **Synthesis:** DiffSinger variance and acoustic models, PC-NSF-HiFiGAN vocoder
 with a fast path for pitch-only edits, incremental phrase rendering with a
-content-addressed cache, voice doubling, built-in effects chain.
+content-addressed cache, UTAU (oto.ini) voicebanks through WORLD,
+flow-matching acoustic models, voice doubling, built-in effects chain
+(EQ, compressor, de-esser, reverb), several singers in one render.
 
-**Languages and phonemes:** WASM phonemizer plugins, neural G2P fallback,
-universal X-SAMPA input.
+**Languages and phonemes:** sandboxed WASM phonemizer plugins (with an SDK and
+template), universal X-SAMPA input. (Neural G2P fallback: planned.)
+
+**Frontier:** plain-language style prompts mapped onto parameters;
+audio-to-voice conversion of a sung recording, gated on the performer's
+consent attestation.
 
 **Interop:** import MusicXML, MIDI, USTX, UST and DiffSinger `.ds`; CLAP/VST3/AU
 bridge plugin for DAWs; external backends via OpenUtau's proposed svs.io protocol.
@@ -90,7 +97,7 @@ Model weights are never stored in this repository. Tests download fixtures
 by checksum into `tests/fixtures/downloaded/`. For your own use, add
 voicebanks through the app or the CLI and respect each voicebank's license.
 
-## Using Cantor from code (planned API)
+## Using Cantor from code
 
 ```python
 import cantor as ct
@@ -142,13 +149,14 @@ docs/decisions/  short records of non-obvious decisions
 
 ## Roadmap
 
-- [ ] **M1 Core**: document model, operations, undo tree, importers, Nix + CI
-- [ ] **M2 Neural render**: DiffSinger + vocoder, phrase cache, deterministic output
-- [ ] **M3 Analysis and APIs**: analysis reports, JSON-RPC, Python, MCP
-- [ ] **M4 Desktop app**: piano roll, lanes, takes, Script Log, command palette
-- [ ] **M5 Breadth**: phonemizer SDK, X-SAMPA, UTAU backend, effects, doubling
-- [ ] **M6 DAW bridge**: CLAP/VST3/AU
-- [ ] **M7 Frontier**: newer SVS model adapters, style prompts, voice conversion
+- [x] **M1 Core**: document model, operations, undo tree, importers, Nix + CI
+- [x] **M2 Neural render**: DiffSinger + vocoder, phrase cache, deterministic output
+- [x] **M3 Analysis and APIs**: analysis reports, JSON-RPC, Python, MCP
+- [x] **M4 Desktop app**: piano roll, lanes, takes, Script Log, command palette
+      (120 fps benchmark verified on macOS; Linux run pending)
+- [x] **M5 Breadth**: phonemizer SDK, X-SAMPA, UTAU backend, svs.io, effects, doubling
+- [x] **M6 DAW bridge**: CLAP plugin (VST3/AU via clap-wrapper), clap-validator clean
+- [x] **M7 Frontier**: flow-matching adapter, style prompts, consent-gated voice conversion
 
 ## Contributing
 
