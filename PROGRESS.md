@@ -134,7 +134,7 @@ Done when:
 - [x] One render call mixes a DiffSinger and a UTAU track
       (`cantor-server/tests/multi_singer.rs`, `cantor-cli/tests/render_cli.rs`)
 
-## M6 DAW bridge — done locally (branch m6-bridge, PR #3)
+## M6 DAW bridge — done (CI green at 7758a37, PR #3)
 Criteria used here (the spec gives the goal without "done when" items):
 - [x] The engine publishes a render to a shared-memory channel and reads
       back host transport (`cantor-server/tests/bridge.rs`); clients:
@@ -149,7 +149,7 @@ Criteria used here (the spec gives the goal without "done when" items):
 - [x] VST3 and AUv2 wrappers build with clap-wrapper (`--wrap`); macOS CI
       runs auval on the AU
 
-## M7 Frontier — done locally (branch m7-frontier)
+## M7 Frontier — done (CI green at 162ca4c, PR #4)
 Criteria used here (the spec lists M7's parts without "done when" items):
 - [x] Text style prompts map onto layered parameters deterministically,
       report unknown words, apply as one undo step and undo exactly
