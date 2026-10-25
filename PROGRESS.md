@@ -134,7 +134,7 @@ Done when:
 - [x] One render call mixes a DiffSinger and a UTAU track
       (`cantor-server/tests/multi_singer.rs`, `cantor-cli/tests/render_cli.rs`)
 
-## M6 DAW bridge — in progress (branch m6-bridge)
+## M6 DAW bridge — done (CI green at 7758a37, PR #3)
 Criteria used here (the spec gives the goal without "done when" items):
 - [x] The engine publishes a render to a shared-memory channel and reads
       back host transport (`cantor-server/tests/bridge.rs`); clients:
