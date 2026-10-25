@@ -739,6 +739,12 @@ fn bridge(validate: bool, wrap: bool, auval: bool) -> Result {
                 .arg(out.join("CantorBridge.component"))
                 .arg(&dest),
         )?;
+        // The component registrar caches what it has seen; restart it so the
+        // new component is found, and let a listing rescan.
+        let _ = Command::new("/usr/bin/killall")
+            .args(["-9", "AudioComponentRegistrar"])
+            .status();
+        let _ = Command::new("/usr/bin/auval").arg("-a").output();
         run(
             "auval",
             Command::new("/usr/bin/auval").args(["-v", "aumu", "Brdg", "Cntr"]),
@@ -803,6 +809,15 @@ fn bridge_wrap(out: &Path, clap: &Path) -> Result {
             &format!("copy {name}"),
             Command::new("cp").arg("-R").arg(build.join(name)).arg(out),
         )?;
+        if cfg!(target_os = "macos") {
+            // Hosts refuse unsigned bundles on Apple silicon.
+            run(
+                &format!("ad-hoc sign {name}"),
+                Command::new("/usr/bin/codesign")
+                    .args(["--force", "--deep", "--sign", "-"])
+                    .arg(out.join(name)),
+            )?;
+        }
         eprintln!("bridge plugin: {}", out.join(name).display());
     }
     Ok(())
