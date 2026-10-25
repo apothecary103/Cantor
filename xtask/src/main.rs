@@ -811,6 +811,9 @@ fn bridge_wrap(out: &Path, clap: &Path) -> Result {
         )?;
     }
     let build = out.join("wrap-build");
+    // Always a clean build: a build directory restored from a CI cache can
+    // carry bundles from another run.
+    let _ = std::fs::remove_dir_all(&build);
     run(
         "configure wrappers",
         Command::new("cmake")
