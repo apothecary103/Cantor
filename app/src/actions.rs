@@ -324,6 +324,20 @@ fn set_section(p: &Project, ctx: &ActionContext) -> Option<Op> {
     })
 }
 
+/// A style prompt over the selection (or the whole track).
+fn style_apply(p: &Project, ctx: &ActionContext) -> Option<Op> {
+    let track = ctx.track?;
+    let range = selection_bounds(p, ctx).or_else(|| {
+        let t = p.track(track)?;
+        Some(TickRange {
+            start: t.parts.iter().map(|x| x.start).min()?,
+            end: t.parts.iter().map(|x| x.start + x.length).max()?,
+        })
+    })?;
+    let plan = cantor_core::style::interpret(&ctx.text);
+    cantor_core::style::ops(p, track, range, &ctx.text, &plan).0
+}
+
 fn _unused(_: TakeId) {}
 
 /// The registry, in palette order.
@@ -518,6 +532,15 @@ pub const REGISTRY: &[ActionDef] = &[
         build: Some(set_section),
     },
     ActionDef {
+        id: "style.apply",
+        name: "Style prompt…",
+        keys: &["cmd-shift-y", "ctrl-shift-y"],
+        kind: Kind::Edit,
+        op: Some("set_curve"),
+        python: "Track.style",
+        build: Some(style_apply),
+    },
+    ActionDef {
         id: "history.undo",
         name: "Undo",
         keys: &["cmd-z", "ctrl-z"],
@@ -619,6 +642,23 @@ pub fn find(id: &str) -> Option<&'static ActionDef> {
 pub fn python_line(op: &Op, p: &Project) -> String {
     let q = |s: &str| format!("{s:?}");
     match op {
+        Op::Batch { label, ops } if label.starts_with("Style: ") => {
+            // A style prompt is one call: track and range from its edits.
+            let prompt = &label["Style: ".len()..];
+            let (track, range) = ops
+                .iter()
+                .find_map(|o| match o {
+                    Op::SetCurve { track, range, .. } => Some((track.0, *range)),
+                    _ => None,
+                })
+                .unwrap_or((0, TickRange { start: 0, end: 0 }));
+            format!(
+                "p.track({track}).style({}, start={}, end={})",
+                q(prompt),
+                range.start,
+                range.end
+            )
+        }
         Op::Batch { label, ops } => {
             let mut lines = vec![format!("with p.transaction({}):", q(label))];
             lines.extend(ops.iter().map(|o| format!("    {}", python_line(o, p))));
@@ -841,6 +881,15 @@ mod tests {
                 "{}: edit without a Python equivalent",
                 a.id
             );
+            // Text-driven actions get text they understand.
+            let ctx = if a.id == "style.apply" {
+                ActionContext {
+                    text: "breathier, more vibrato".into(),
+                    ..ctx.clone()
+                }
+            } else {
+                ctx.clone()
+            };
             let op = (a.build.expect("edits have builders"))(&p, &ctx)
                 .unwrap_or_else(|| panic!("{} built no op in the test context", a.id));
             let v = serde_json::to_value(&op).unwrap();

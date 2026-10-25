@@ -112,6 +112,7 @@ fn convert(doc: &Ustx, cx: &mut Cx) -> Result<Project, ImportError> {
         title: doc.name.clone(),
         artist: String::new(),
         comment: doc.comment.clone(),
+        provenance: Vec::new(),
     };
     check_version(&doc.ustx_version, cx);
     project.tempo_map = tempo_map(doc, cx)?;

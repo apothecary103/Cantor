@@ -43,6 +43,12 @@ try:
 except ct.CantorError:
     pass
 
+# Style prompts become curve and expression edits in one step.
+rev = p.revision
+assert lead.style("breathier and more intimate, slightly less vibrato", 0, 7680) == []
+assert p.revision == rev + 1
+assert lead.style("sparkly", 0, 7680) == ["sparkly"]
+
 # Effects and doubling are track settings with registry-checked parameters.
 lead.set_effects([
     {"kind": "eq", "params": {"presence_gain_db": 2.0}},

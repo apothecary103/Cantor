@@ -149,6 +149,22 @@ Criteria used here (the spec gives the goal without "done when" items):
 - [x] VST3 and AUv2 wrappers build with clap-wrapper (`--wrap`); macOS CI
       runs auval on the AU
 
+## M7 Frontier — done (CI green at 162ca4c, PR #4)
+Criteria used here (the spec lists M7's parts without "done when" items):
+- [x] Text style prompts map onto layered parameters deterministically,
+      report unknown words, apply as one undo step and undo exactly
+      (`cantor-core` style tests); JSON-RPC/MCP `apply_style`, Python
+      `Track.style`, `cantor style` (0026)
+- [x] Audio-to-voice conversion recovers a melody's notes from a
+      recording, records provenance, and the result re-sings within 30
+      cents p95; it is refused without a complete consent attestation, and
+      cloned voices without an attestation are never loaded
+      (`cantor-server/tests/convert.rs`) (0027)
+- [x] Flow-matching / DiT acoustic models through an ONNX velocity-field
+      contract with Cantor's seeded Euler/Heun sampler; verified against a
+      reference integration with a real ONNX graph
+      (`cantor-backends/tests/flow.rs`) (0028)
+
 ## Open items
 - Confirm with OpenVPI that the in-memory noise rewrite fits the Qixuan
   terms of use (0010).

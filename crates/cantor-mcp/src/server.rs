@@ -177,6 +177,38 @@ pub struct RetakeArgs {
     pub seed: Option<u64>,
 }
 
+/// Arguments for convert_audio.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ConvertArgs {
+    /// WAV file of a sung performance.
+    pub path: std::path::PathBuf,
+    /// Singer id from list_singers that will sing it.
+    pub singer: String,
+    /// Lyrics, one per detected note, in order ("la" when they run out).
+    #[serde(default)]
+    pub lyrics: Vec<String>,
+    /// The performer's consent to this conversion; required and recorded.
+    pub consent: cantor_server::convert::ConsentAttestation,
+}
+
+/// Arguments for apply_style.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct StyleArgs {
+    /// Project handle.
+    pub project_id: String,
+    /// Base revision.
+    pub base_revision: Revision,
+    /// Track id or name.
+    pub track: TrackRef,
+    /// Tick range the style applies to.
+    pub range: TickRange,
+    /// Plain-language style, e.g. "breathier and more intimate, slightly less vibrato".
+    pub prompt: String,
+    /// Interpret and validate without applying.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
 /// Arguments for select_take.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SelectTakeArgs {
@@ -392,6 +424,47 @@ impl CantorMcp {
         blocking(move || e.apply_ops(&a.project_id, a.base_revision, a.ops, a.dry_run))
             .await
             .map(Json)
+    }
+
+    /// Converts a sung recording into a new project another singer sings (notes, pitch contour and dynamics from the audio). Requires the performer's consent attestation (performer, statement, date, confirmed); it is recorded in the project. Cloned voices without their own attestation are refused.
+    #[tool(annotations(
+        read_only_hint = false,
+        destructive_hint = false,
+        open_world_hint = false
+    ))]
+    async fn convert_audio(
+        &self,
+        Parameters(a): Parameters<ConvertArgs>,
+    ) -> ToolResult<cantor_server::engine::ProjectInfo> {
+        let e = self.engine.clone();
+        blocking(move || e.convert_audio(&a.path, &a.singer, &a.lyrics, &a.consent))
+            .await
+            .map(Json)
+    }
+
+    /// Applies a plain-language style ("breathier, more intimate, less vibrato") over a range as parameter-curve and expression edits in one undo step; returns the interpretation (each adjustment and the words behind it) and unrecognized words. Use dry_run to preview.
+    #[tool(annotations(
+        read_only_hint = false,
+        destructive_hint = true,
+        open_world_hint = false
+    ))]
+    async fn apply_style(
+        &self,
+        Parameters(a): Parameters<StyleArgs>,
+    ) -> ToolResult<cantor_server::engine::StyleResult> {
+        let e = self.engine.clone();
+        blocking(move || {
+            e.apply_style(
+                &a.project_id,
+                a.base_revision,
+                &a.track,
+                a.range,
+                &a.prompt,
+                a.dry_run,
+            )
+        })
+        .await
+        .map(Json)
     }
 
     /// Generates n_variants new takes for phrases overlapping range, re-rolling the chosen dims; selects the first new take.

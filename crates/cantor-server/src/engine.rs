@@ -6,6 +6,7 @@ use crate::describe;
 use crate::singers::{self, SingerInfo, SingerSchema};
 use cantor_analysis::AnalysisReport;
 use cantor_backends::DiffSinger;
+use cantor_backends::flow::FlowBackend;
 use cantor_backends::rmvpe::Rmvpe;
 use cantor_backends::svsio::{SvsIo, SvsIoConfig};
 use cantor_backends::utau::Utau;
@@ -66,6 +67,19 @@ impl EngineConfig {
             cache_dir: base.join("render"),
         }
     }
+}
+
+/// What a style prompt did.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct StyleResult {
+    /// How the prompt was interpreted.
+    pub plan: cantor_core::style::StylePlan,
+    /// Whether the edits were applied (false for dry runs and rejections).
+    pub applied: bool,
+    /// The project's revision afterwards.
+    pub revision: Revision,
+    /// Unrecognized words, rejected edits and other findings.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 /// What a bridge publish did.
@@ -328,6 +342,9 @@ pub enum Voice {
     Utau(Arc<Utau>),
     /// An external svs.io backend.
     SvsIo(Arc<SvsIo>),
+    /// A DiffSinger voicebank whose acoustic stage is a flow-matching
+    /// model (`flow.yaml` in the voicebank).
+    Flow(Arc<DiffSinger>, Arc<FlowBackend>),
 }
 
 impl Voice {
@@ -335,6 +352,7 @@ impl Voice {
     pub fn backend(&self) -> Arc<dyn Backend> {
         match self {
             Voice::DiffSinger(b) => b.clone(),
+            Voice::Flow(_, f) => f.clone(),
             Voice::Utau(b) => b.clone(),
             Voice::SvsIo(b) => b.clone(),
         }
@@ -344,7 +362,7 @@ impl Voice {
     /// for descriptions.
     pub fn phonemes_for(&self, lyric: &str, lang: Option<&str>) -> Option<Vec<String>> {
         match self {
-            Voice::DiffSinger(b) => b.phonemes_for(lyric, lang),
+            Voice::DiffSinger(b) | Voice::Flow(b, _) => b.phonemes_for(lyric, lang),
             Voice::Utau(u) => u.entry_for(lyric).map(|e| vec![e.alias.clone()]),
             Voice::SvsIo(_) => None,
         }
@@ -353,7 +371,7 @@ impl Voice {
     /// Languages the voice was trained on (DiffSinger), if known.
     pub fn languages(&self) -> Vec<String> {
         match self {
-            Voice::DiffSinger(b) => b.languages(),
+            Voice::DiffSinger(b) | Voice::Flow(b, _) => b.languages(),
             _ => Vec::new(),
         }
     }
@@ -361,7 +379,7 @@ impl Voice {
     /// The X-SAMPA map for a language, if the voice has phonemes.
     pub fn xsampa(&self, lang: &str) -> Option<Arc<XSampaMap>> {
         match self {
-            Voice::DiffSinger(b) => b.xsampa(lang),
+            Voice::DiffSinger(b) | Voice::Flow(b, _) => b.xsampa(lang),
             _ => None,
         }
     }
@@ -454,6 +472,56 @@ impl Engine {
     /// Opens an in-memory project.
     pub fn add_project(&self, project: Project) -> ProjectInfo {
         self.insert(project, None, Vec::new())
+    }
+
+    /// Converts a sung recording (WAV) into a new project sung by
+    /// `singer`: notes from its pitch, its contour and dynamics as edit
+    /// layers, `lyrics` in order. Refused without a complete consent
+    /// attestation from the performer, which is recorded in the project's
+    /// provenance. Needs RMVPE.
+    pub fn convert_audio(
+        &self,
+        path: &Path,
+        singer: &str,
+        lyrics: &[String],
+        consent: &crate::convert::ConsentAttestation,
+    ) -> Result<ProjectInfo> {
+        if let Some(problem) = consent.problem() {
+            return Err(EngineError::Invalid(format!(
+                "converting a recording needs the performer's consent: {problem}"
+            )));
+        }
+        let (info, _) = self.find_singer(singer)?;
+        // Loading the voice enforces the cloned-voice attestation rule.
+        self.voice(singer)?;
+        let f0x = self.analyzer().ok_or_else(|| {
+            EngineError::Invalid("conversion needs RMVPE (CANTOR_RMVPE) for pitch".into())
+        })?;
+        let (samples, sr) =
+            read_mono(path).map_err(|e| EngineError::Io(format!("{}: {e}", path.display())))?;
+        let f0 = cantor_analysis::F0Extractor::extract(f0x.as_ref(), &samples, sr)
+            .map_err(EngineError::Render)?;
+        let source = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        let project = crate::convert::build_project(
+            &f0,
+            &samples,
+            sr,
+            singer,
+            &info.backend,
+            lyrics,
+            &source,
+            consent,
+        );
+        if project.tracks[0].parts[0].notes.is_empty() {
+            return Err(EngineError::Invalid(format!(
+                "no sung notes were found in {}",
+                path.display()
+            )));
+        }
+        Ok(self.add_project(project))
     }
 
     /// Imports USTX, MIDI or MusicXML as a new project.
@@ -553,6 +621,47 @@ impl Engine {
         let r = p.doc.apply(op);
         p.record(&r);
         Ok(r)
+    }
+
+    /// Applies a text style prompt ("breathier, more intimate") to a track
+    /// over a range: the prompt is interpreted into parameter and
+    /// expression adjustments (cantor_core::style) and applied as one
+    /// batch. Words the lexicon does not know come back as warnings.
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_style(
+        &self,
+        id: &str,
+        base_revision: Revision,
+        track: &TrackRef,
+        range: TickRange,
+        prompt: &str,
+        dry_run: bool,
+    ) -> Result<StyleResult> {
+        let p = self.project(id)?;
+        let mut p = p.lock().expect("project lock");
+        p.check_base(base_revision)?;
+        let track = resolve_track(p.doc.project(), track)?;
+        let plan = cantor_core::style::interpret(prompt);
+        let (op, mut diagnostics) =
+            cantor_core::style::ops(p.doc.project(), track, range, prompt, &plan);
+        let result = match op {
+            Some(op) if dry_run => Some(p.doc.dry_run(&op)),
+            Some(op) => {
+                let r = p.doc.apply(op);
+                p.record(&r);
+                Some(r)
+            }
+            None => None,
+        };
+        if let Some(r) = &result {
+            diagnostics.extend(r.diagnostics.iter().cloned());
+        }
+        Ok(StyleResult {
+            plan,
+            revision: result.as_ref().map_or(p.doc.revision(), |r| r.revision),
+            applied: !dry_run && result.as_ref().is_some_and(|r| r.applied),
+            diagnostics,
+        })
     }
 
     /// Generates takes for the phrases of `track` overlapping `range`.
@@ -712,6 +821,12 @@ impl Engine {
             return Ok(v.clone());
         }
         let (info, dir) = self.find_singer(singer)?;
+        if info.license.cloned && !info.license.consent_attestation {
+            return Err(EngineError::Invalid(format!(
+                "`{singer}` is a cloned voice without a consent attestation in its \
+                 character.yaml; Cantor does not load it (docs/spec/00-vision.md)"
+            )));
+        }
         let render_err = |e: cantor_render::backend::BackendError| EngineError::Render(e.0);
         let voice = match info.backend.as_str() {
             "utau" => {
@@ -736,11 +851,18 @@ impl Engine {
             _ => {
                 let vocoder = find_vocoder(&self.config.vocoder_paths, &info.vocoder)
                     .ok_or_else(|| EngineError::NotFound(format!("vocoder `{}`", info.vocoder)))?;
-                Voice::DiffSinger(Arc::new(
+                let ds = Arc::new(
                     DiffSinger::load(&dir, &vocoder)
                         .map_err(render_err)?
                         .with_phonemizers(self.phonemizers().0.clone()),
-                ))
+                );
+                let flow = dir.join("flow.yaml");
+                if flow.is_file() {
+                    let f = FlowBackend::load(ds.clone(), &flow).map_err(render_err)?;
+                    Voice::Flow(ds, Arc::new(f))
+                } else {
+                    Voice::DiffSinger(ds)
+                }
             }
         };
         self.voices
@@ -950,6 +1072,31 @@ impl Engine {
 }
 
 /// A vocoder directory named `name`, or whose `vocoder.yaml` declares it.
+/// Reads a WAV of any common format as mono f32 (channels averaged).
+fn read_mono(path: &Path) -> std::result::Result<(Vec<f32>, u32), String> {
+    let mut r = hound::WavReader::open(path).map_err(|e| e.to_string())?;
+    let spec = r.spec();
+    let ch = usize::from(spec.channels.max(1));
+    let all: Vec<f32> = match spec.sample_format {
+        hound::SampleFormat::Float => r
+            .samples::<f32>()
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|e| e.to_string())?,
+        hound::SampleFormat::Int => {
+            let scale = 2f32.powi(i32::from(spec.bits_per_sample) - 1);
+            r.samples::<i32>()
+                .map(|s| s.map(|v| v as f32 / scale))
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| e.to_string())?
+        }
+    };
+    let mono = all
+        .chunks(ch)
+        .map(|f| f.iter().sum::<f32>() / f.len() as f32)
+        .collect();
+    Ok((mono, spec.sample_rate))
+}
+
 fn find_vocoder(paths: &[PathBuf], name: &str) -> Option<PathBuf> {
     let declares = |dir: &Path| {
         std::fs::read_to_string(dir.join("vocoder.yaml")).is_ok_and(|y| {

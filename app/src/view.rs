@@ -72,8 +72,12 @@ enum Drag {
 enum Prompt {
     /// Command palette with a filter query and highlighted row.
     Palette { query: String, selected: usize },
-    /// Typing lyrics for the selection.
-    Lyrics { text: String },
+    /// Typing text for an action (lyrics, a style prompt).
+    Text {
+        action: &'static str,
+        title: &'static str,
+        text: String,
+    },
 }
 
 /// Scripted scroll/zoom benchmark state.
@@ -193,7 +197,16 @@ impl CantorWindow {
                 });
             }
             "lyric.enter" if text.is_none() => {
-                self.prompt = Some(Prompt::Lyrics {
+                self.prompt = Some(Prompt::Text {
+                    action: "lyric.enter",
+                    title: "Lyrics (space separates syllables)",
+                    text: String::new(),
+                });
+            }
+            "style.apply" if text.is_none() => {
+                self.prompt = Some(Prompt::Text {
+                    action: "style.apply",
+                    title: "Style (e.g. breathier, more intimate)",
                     text: String::new(),
                 });
             }
@@ -325,12 +338,12 @@ impl CantorWindow {
                         }
                     }
                 }
-                Prompt::Lyrics { text } => match key.as_str() {
+                Prompt::Text { action, text, .. } => match key.as_str() {
                     "escape" => self.prompt = None,
                     "enter" => {
-                        let t = text.clone();
+                        let (a, t) = (*action, text.clone());
                         self.prompt = None;
-                        self.run_action("lyric.enter", Some(&t), cx);
+                        self.run_action(a, Some(&t), cx);
                     }
                     "backspace" => {
                         text.pop();
@@ -1172,11 +1185,7 @@ fn prompt_overlay(prompt: &Prompt, t: Theme) -> Div {
                 })
                 .collect(),
         ),
-        Prompt::Lyrics { text } => (
-            "Lyrics (space separates syllables)",
-            text.clone(),
-            Vec::new(),
-        ),
+        Prompt::Text { title, text, .. } => (*title, text.clone(), Vec::new()),
     };
     div()
         .absolute()

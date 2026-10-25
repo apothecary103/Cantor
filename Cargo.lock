@@ -1110,6 +1110,7 @@ dependencies = [
  "cantor-phon",
  "cantor-render",
  "encoding_rs",
+ "hound",
  "schemars",
  "serde",
  "serde-saphyr 2.0.0",

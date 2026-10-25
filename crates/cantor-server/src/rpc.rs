@@ -29,6 +29,8 @@ pub const METHODS: &[&str] = &[
     "list_singers",
     "get_singer_schema",
     "list_phonemizers",
+    "apply_style",
+    "convert_audio",
     "bridge_publish",
     "bridge_status",
     "apply_ops",
@@ -138,6 +140,24 @@ struct OpsP {
     project_id: String,
     base_revision: Revision,
     ops: Vec<Op>,
+    #[serde(default)]
+    dry_run: bool,
+}
+#[derive(Deserialize)]
+struct ConvertP {
+    path: PathBuf,
+    singer: String,
+    #[serde(default)]
+    lyrics: Vec<String>,
+    consent: crate::convert::ConsentAttestation,
+}
+#[derive(Deserialize)]
+struct StyleP {
+    project_id: String,
+    base_revision: Revision,
+    track: TrackRef,
+    range: TickRange,
+    prompt: String,
     #[serde(default)]
     dry_run: bool,
 }
@@ -256,6 +276,21 @@ pub fn dispatch(engine: &Engine, method: &str, p: Value) -> Result<Value, RpcErr
         "apply_ops" => {
             let a: OpsP = params(p)?;
             to_value(engine.apply_ops(&a.project_id, a.base_revision, a.ops, a.dry_run)?)
+        }
+        "convert_audio" => {
+            let a: ConvertP = params(p)?;
+            to_value(engine.convert_audio(&a.path, &a.singer, &a.lyrics, &a.consent)?)
+        }
+        "apply_style" => {
+            let a: StyleP = params(p)?;
+            to_value(engine.apply_style(
+                &a.project_id,
+                a.base_revision,
+                &a.track,
+                a.range,
+                &a.prompt,
+                a.dry_run,
+            )?)
         }
         "retake" => {
             let a: RetakeP = params(p)?;
