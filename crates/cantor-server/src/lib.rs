@@ -5,6 +5,7 @@
 
 pub mod describe;
 pub mod engine;
+pub mod rpc;
 pub mod singers;
 
 pub use engine::{Engine, EngineConfig, EngineError, TrackRef};

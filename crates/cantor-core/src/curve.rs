@@ -96,6 +96,12 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: if cfg!(miri) { 8 } else { 1024 },
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
         /// Monotone Hermite stays within the range of its two neighbors.
         #[test]
         fn hermite_never_overshoots(

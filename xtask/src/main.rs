@@ -33,6 +33,7 @@ commands:
   miri            run Miri on crates with unsafe code
   tsan            run ThreadSanitizer on the engine and audio crates
   conformance     run the official MCP conformance suite against the fixture server
+  python          build the Python wheel, install it in a venv, run the docs example and API tests
                   (needs network for npx; not part of ci)
   app           run the desktop app (arrives in M4)
   bench           render and UI benchmarks (arrive in M2/M4)";
@@ -49,6 +50,7 @@ fn main() -> ExitCode {
         Some("miri") => miri(),
         Some("tsan") => tsan(),
         Some("conformance") => conformance(),
+        Some("python") => python(),
         Some("app") => Err("the desktop app arrives in milestone M4".into()),
         Some("bench") => Err("benchmarks arrive with rendering (M2) and the app (M4)".into()),
         Some("-h" | "--help" | "help") => {
@@ -398,4 +400,103 @@ fn conformance() -> Result {
     );
     drop(server);
     result
+}
+
+/// The first ```python block of docs/spec/60-api.md, verbatim.
+fn spec_python_example() -> Result<String> {
+    let spec =
+        std::fs::read_to_string(root().join("docs/spec/60-api.md")).map_err(|e| e.to_string())?;
+    let start = spec
+        .find("```python\n")
+        .ok_or("no python block in 60-api.md")?
+        + "```python\n".len();
+    let len = spec[start..]
+        .find("```")
+        .ok_or("unterminated python block")?;
+    Ok(spec[start..start + len].to_owned())
+}
+
+/// Builds the wheel with maturin, installs it into a fresh venv (no
+/// network), runs the spec's example unchanged and the API tests.
+fn python() -> Result {
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root().join("target"));
+    let wheels = target.join("wheels");
+    let _ = std::fs::remove_dir_all(&wheels);
+    run(
+        "maturin build",
+        Command::new("maturin")
+            .current_dir(root())
+            .args([
+                "build",
+                "--release",
+                "--locked",
+                "-i",
+                "python3",
+                "--manifest-path",
+            ])
+            .arg(root().join("crates/cantor-py/Cargo.toml"))
+            .arg("--out")
+            .arg(&wheels),
+    )?;
+    let wheel = std::fs::read_dir(&wheels)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .find(|p| p.extension().is_some_and(|x| x == "whl"))
+        .ok_or("maturin produced no wheel")?;
+    eprintln!("wheel: {}", wheel.display());
+
+    let venv = target.join("py-venv");
+    let _ = std::fs::remove_dir_all(&venv);
+    run(
+        "venv",
+        Command::new("python3").args(["-m", "venv"]).arg(&venv),
+    )?;
+    let py = venv.join("bin/python");
+    run(
+        "pip install",
+        Command::new(&py)
+            .args([
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                "--no-index",
+                "--force-reinstall",
+            ])
+            .arg(&wheel),
+    )?;
+
+    let vb = cantor_fixtures::ensure(&cantor_fixtures::QIXUAN)?;
+    cantor_fixtures::ensure(&cantor_fixtures::PC_NSF_HIFIGAN)?;
+    let rmvpe = cantor_fixtures::ensure(&cantor_fixtures::RMVPE)?;
+    let work = target.join("py-example");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let fixture = root().join("crates/cantor-cli/tests/fixtures/twinkle.cantor");
+    std::fs::copy(&fixture, work.join("song.cantor")).map_err(|e| e.to_string())?;
+    std::fs::write(work.join("example.py"), spec_python_example()?).map_err(|e| e.to_string())?;
+    let env = |c: &mut Command| {
+        c.current_dir(&work)
+            .env("CANTOR_SINGERS", vb.parent().expect("voicebank parent"))
+            .env("CANTOR_VOCODERS", cantor_fixtures::dir())
+            .env("CANTOR_RMVPE", &rmvpe)
+            .env("CANTOR_CACHE", work.join("cache"));
+    };
+    let tests = root().join("crates/cantor-py/tests");
+    let mut setup = Command::new(&py);
+    setup.arg(tests.join("setup_example.py")).arg("song.cantor");
+    env(&mut setup);
+    run("prepare song.cantor", &mut setup)?;
+    let mut example = Command::new(&py);
+    example.arg("example.py");
+    env(&mut example);
+    run("docs/spec/60-api.md example (unchanged)", &mut example)?;
+    let mut api = Command::new(&py);
+    api.arg(tests.join("test_api.py")).arg("song.cantor");
+    env(&mut api);
+    run("Python API tests", &mut api)?;
+    eprintln!("\nxtask python: wheel built, installed and the spec example ran");
+    Ok(())
 }

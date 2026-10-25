@@ -56,6 +56,30 @@ jobs:
           git diff --exit-code -- schema/
           test -z "$(git status --porcelain -- schema/)"
 
+  python:
+    name: python wheel + spec example (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - name: Cache model fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/fixtures/downloaded
+          key: fixtures-${{ hashFiles('crates/cantor-fixtures/src/lib.rs') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-${{ runner.os }}-python-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-python-
+      - run: nix develop --command cargo xtask python
+
   miri:
     name: miri (cantor-core)
     runs-on: ubuntu-latest
