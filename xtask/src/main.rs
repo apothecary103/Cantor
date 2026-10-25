@@ -816,7 +816,20 @@ fn bridge(validate: bool, wrap: bool, auval: bool) -> Result {
         let _ = Command::new("/usr/bin/killall")
             .args(["-9", "AudioComponentRegistrar"])
             .status();
-        let _ = Command::new("/usr/bin/auval").arg("-a").output();
+        // Registration is asynchronous: wait until the listing has it.
+        let listed = (0..30).any(|_| {
+            let found = Command::new("/usr/bin/auval")
+                .arg("-a")
+                .output()
+                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("Brdg Cntr"));
+            if !found {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+            found
+        });
+        if !listed {
+            eprintln!("auval: the component is not listed yet; validating anyway");
+        }
         run(
             "auval",
             Command::new("/usr/bin/auval").args(["-v", "aumu", "Brdg", "Cntr"]),
