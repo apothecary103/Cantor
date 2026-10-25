@@ -1201,6 +1201,7 @@ fn meta(root: &El) -> Meta {
         title: work.or(movement).unwrap_or_default().to_owned(),
         artist: artists.join(", "),
         comment: comment.join("\n"),
+        provenance: Vec::new(),
     }
 }
 

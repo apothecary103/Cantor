@@ -18,6 +18,7 @@ pub mod op;
 pub mod params;
 pub mod phrase;
 pub mod schema;
+pub mod style;
 pub mod time;
 
 pub use diag::{Diagnostic, DocDiff, EntityRef, Severity};

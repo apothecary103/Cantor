@@ -474,6 +474,47 @@ impl Track {
         self.set_curve(py, param, start, end, Vec::new(), "linear")
     }
 
+    /// Applies a plain-language style ("breathier, more intimate, less
+    /// vibrato") to `start..end` (default: the whole track) as curve and
+    /// expression edits in one step. Returns the words the style lexicon
+    /// did not recognize.
+    #[pyo3(signature = (prompt, start = None, end = None))]
+    fn style(
+        &self,
+        py: Python<'_>,
+        prompt: &str,
+        start: Option<i64>,
+        end: Option<i64>,
+    ) -> PyResult<Vec<String>> {
+        let doc = self.project.borrow(py).doc()?;
+        let track = doc
+            .track(self.id)
+            .ok_or_else(|| CantorError::new_err("track no longer exists"))?;
+        let lo = track.parts.iter().map(|p| p.start).min().unwrap_or(0);
+        let hi = track
+            .parts
+            .iter()
+            .map(|p| p.start + p.length)
+            .max()
+            .unwrap_or(1);
+        let range = TickRange {
+            start: start.unwrap_or(lo),
+            end: end.unwrap_or(hi),
+        };
+        let plan = cantor_core::style::interpret(prompt);
+        let (op, diags) = cantor_core::style::ops(&doc, self.id, range, prompt, &plan);
+        if let Some(e) = diags
+            .iter()
+            .find(|d| d.severity == cantor_core::Severity::Error)
+        {
+            return Err(PyValueError::new_err(format!("{}: {}", e.code, e.message)));
+        }
+        if let Some(op) = op {
+            self.project.borrow(py).submit(op)?;
+        }
+        Ok(plan.unrecognized)
+    }
+
     /// Generates takes for phrases overlapping `start..end`; `dims` from
     /// "pitch", "timing", "timbre", "expression".
     #[pyo3(signature = (start, end, dims, n_variants = 1, seed = None))]
@@ -1044,6 +1085,38 @@ fn import_file(path: std::path::PathBuf) -> PyResult<Project> {
     Ok(wrap(e, info.project_id))
 }
 
+/// Converts a sung recording into a new project `singer` sings. Requires
+/// the performer's consent (`performer`, `consent` statement, `date`,
+/// `confirmed=True`), which is recorded in the project.
+#[pyfunction]
+#[pyo3(signature = (path, singer, *, performer, consent, date, confirmed, lyrics = None))]
+#[allow(clippy::too_many_arguments)]
+fn convert_audio(
+    py: Python<'_>,
+    path: std::path::PathBuf,
+    singer: String,
+    performer: String,
+    consent: String,
+    date: String,
+    confirmed: bool,
+    lyrics: Option<Vec<String>>,
+) -> PyResult<Project> {
+    let e = engine();
+    let attestation = cantor_server::convert::ConsentAttestation {
+        performer,
+        statement: consent,
+        date,
+        confirmed,
+    };
+    let engine = e.clone();
+    let info = py
+        .detach(move || {
+            engine.convert_audio(&path, &singer, &lyrics.unwrap_or_default(), &attestation)
+        })
+        .map_err(err)?;
+    Ok(wrap(e, info.project_id))
+}
+
 /// The native module behind the `cantor` package.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1058,5 +1131,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(open, m)?)?;
     m.add_function(wrap_pyfunction!(new, m)?)?;
     m.add_function(wrap_pyfunction!(import_file, m)?)?;
+    m.add_function(wrap_pyfunction!(convert_audio, m)?)?;
     Ok(())
 }

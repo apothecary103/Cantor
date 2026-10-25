@@ -352,6 +352,47 @@ pub mod test_support {
         put_len(&mut model, MODEL_GRAPH, &graph);
         model
     }
+
+    /// A flow-matching velocity model for tests: inputs `x` and `cond`
+    /// (float, any shape) and `t` (float [1]); output `v = cond - x`, the
+    /// field whose flow relaxes `x` toward `cond`. Opset 15.
+    pub fn velocity_model() -> Vec<u8> {
+        let dynamic = |name: &str, rank: usize| {
+            let mut shape = Vec::new();
+            for d in 0..rank {
+                let mut dim = Vec::new();
+                put_len(&mut dim, 2, format!("{name}_{d}").as_bytes());
+                put_len(&mut shape, 1, &dim);
+            }
+            let mut tensor = Vec::new();
+            put_varint_field(&mut tensor, 1, 1);
+            put_len(&mut tensor, 2, &shape);
+            let mut ty = Vec::new();
+            put_len(&mut ty, 1, &tensor);
+            let mut v = Vec::new();
+            put_len(&mut v, 1, name.as_bytes());
+            put_len(&mut v, 2, &ty);
+            v
+        };
+        let mut graph = Vec::new();
+        put_len(
+            &mut graph,
+            GRAPH_NODE,
+            &node("Sub", &["cond", "x"], &["v"], "sub"),
+        );
+        put_len(&mut graph, 2, b"velocity");
+        put_len(&mut graph, GRAPH_INPUT, &dynamic("x", 3));
+        put_len(&mut graph, GRAPH_INPUT, &dynamic("t", 1));
+        put_len(&mut graph, GRAPH_INPUT, &dynamic("cond", 3));
+        put_len(&mut graph, 12, &dynamic("v", 3));
+        let mut model = Vec::new();
+        put_varint_field(&mut model, 1, 8);
+        let mut opset = Vec::new();
+        put_varint_field(&mut opset, 2, 15);
+        put_len(&mut model, 8, &opset);
+        put_len(&mut model, MODEL_GRAPH, &graph);
+        model
+    }
 }
 
 #[cfg(test)]

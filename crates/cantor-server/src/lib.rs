@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod convert;
 pub mod describe;
 pub mod engine;
 pub mod rpc;

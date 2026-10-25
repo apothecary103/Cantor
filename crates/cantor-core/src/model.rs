@@ -62,6 +62,26 @@ pub struct Meta {
     pub artist: String,
     /// Free-form notes.
     pub comment: String,
+    /// Where material in the project came from, such as a converted
+    /// recording and the performer's consent.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub provenance: Vec<Provenance>,
+}
+
+/// A source the project was derived from, with the consent that allowed it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Provenance {
+    /// What was done, such as `audio_to_voice`.
+    pub method: String,
+    /// The source file or reference.
+    pub source: String,
+    /// Who performed the source.
+    pub performer: String,
+    /// The consent statement given for this use.
+    pub consent: String,
+    /// When consent was given (free text, ISO 8601 recommended).
+    pub date: String,
 }
 
 /// A tempo change.

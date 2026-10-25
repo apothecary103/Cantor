@@ -2,6 +2,7 @@
 //! WORLD) and svs.io (external processes).
 
 pub mod diffsinger;
+pub mod flow;
 pub mod onnx;
 pub mod onnx_noise;
 pub mod rmvpe;

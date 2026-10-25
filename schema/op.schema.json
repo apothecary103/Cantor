@@ -1092,6 +1092,13 @@
           "type": "string",
           "default": ""
         },
+        "provenance": {
+          "description": "Where material in the project came from, such as a converted\nrecording and the performer's consent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Provenance"
+          }
+        },
         "title": {
           "description": "Song title.",
           "type": "string",
@@ -1446,6 +1453,40 @@
         }
       },
       "additionalProperties": false
+    },
+    "Provenance": {
+      "description": "A source the project was derived from, with the consent that allowed it.",
+      "type": "object",
+      "properties": {
+        "consent": {
+          "description": "The consent statement given for this use.",
+          "type": "string"
+        },
+        "date": {
+          "description": "When consent was given (free text, ISO 8601 recommended).",
+          "type": "string"
+        },
+        "method": {
+          "description": "What was done, such as `audio_to_voice`.",
+          "type": "string"
+        },
+        "performer": {
+          "description": "Who performed the source.",
+          "type": "string"
+        },
+        "source": {
+          "description": "The source file or reference.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "source",
+        "performer",
+        "consent",
+        "date"
+      ]
     },
     "RetakeDim": {
       "description": "A dimension a retake can vary.",

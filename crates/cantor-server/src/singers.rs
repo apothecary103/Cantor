@@ -37,6 +37,10 @@ pub struct License {
     /// Voice cloning or conversion attestation present. Cloned voices
     /// without one are refused (docs/spec/00-vision.md).
     pub consent_attestation: bool,
+    /// The voicebank declares itself a clone of a real person's voice
+    /// (`cloned: true` or `voice_clone: true` in `character.yaml`).
+    #[serde(default)]
+    pub cloned: bool,
 }
 
 /// What a singer supports, for clients that edit parameters.
@@ -102,6 +106,10 @@ pub fn describe(dir: &Path) -> Option<SingerInfo> {
         web: field("web="),
         terms_files: terms_files(dir),
         consent_attestation: yaml.contains("consent_attestation"),
+        cloned: yaml
+            .lines()
+            .map(|l| l.split('#').next().unwrap_or("").replace(' ', ""))
+            .any(|l| l == "cloned:true" || l == "voice_clone:true"),
     };
     let name = field("name=").unwrap_or_else(|| id.clone());
     if let Ok(dsconfig) = std::fs::read_to_string(dir.join("dsconfig.yaml")) {

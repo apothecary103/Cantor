@@ -65,6 +65,54 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    /// Apply a plain-language style ("breathier, more intimate, less
+    /// vibrato") to a track as curve and expression edits; rewrites the
+    /// project in place.
+    Style {
+        /// The .cantor project.
+        project: PathBuf,
+        /// The style prompt.
+        prompt: String,
+        /// Track id (default: the first track).
+        #[arg(long)]
+        track: Option<u64>,
+        /// First tick (default: the track's start).
+        #[arg(long)]
+        start: Option<i64>,
+        /// Tick after the range (default: the track's end).
+        #[arg(long)]
+        end: Option<i64>,
+        /// Report the interpretation and the edits without saving.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Convert a sung recording into a project a Cantor singer sings.
+    /// Requires the performer's consent, which is recorded in the project.
+    Convert {
+        /// WAV file of the performance.
+        input: PathBuf,
+        /// Output .cantor project.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Singer id (from $CANTOR_SINGERS) that sings the result.
+        #[arg(long)]
+        singer: String,
+        /// Lyrics, space-separated, one per detected note.
+        #[arg(long, default_value = "")]
+        lyrics: String,
+        /// Who performed the recording.
+        #[arg(long)]
+        performer: String,
+        /// The performer's consent statement.
+        #[arg(long)]
+        consent: String,
+        /// When consent was given.
+        #[arg(long)]
+        date: String,
+        /// Confirms the performer gave this consent.
+        #[arg(long)]
+        confirm: bool,
+    },
     /// Edit projects with ops.
     Ops {
         #[command(subcommand)]
@@ -133,6 +181,48 @@ fn run(cli: Cli) -> Result<(), String> {
             project_file::save(&output, &imported.project, Compression::None)
                 .map_err(|e| format!("{}: {e}", output.display()))
         }
+        Command::Style {
+            project,
+            prompt,
+            track,
+            start,
+            end,
+            dry_run,
+        } => style(&project, &prompt, track, start, end, dry_run),
+        Command::Convert {
+            input,
+            output,
+            singer,
+            lyrics,
+            performer,
+            consent,
+            date,
+            confirm,
+        } => {
+            let engine = cantor_server::Engine::new(cantor_server::EngineConfig::from_env());
+            let lyrics: Vec<String> = lyrics.split_whitespace().map(str::to_owned).collect();
+            let consent = cantor_server::convert::ConsentAttestation {
+                performer,
+                statement: consent,
+                date,
+                confirmed: confirm,
+            };
+            let info = engine
+                .convert_audio(&input, &singer, &lyrics, &consent)
+                .map_err(|e| e.to_string())?;
+            let path = engine
+                .save_project(&info.project_id, Some(&output))
+                .map_err(|e| e.to_string())?;
+            let (p, _) = engine
+                .snapshot(&info.project_id)
+                .map_err(|e| e.to_string())?;
+            eprintln!(
+                "converted {} notes to {}",
+                p.tracks[0].parts[0].notes.len(),
+                path.display()
+            );
+            Ok(())
+        }
         Command::Ops {
             command:
                 OpsCommand::Apply {
@@ -171,6 +261,63 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             Ok(())
         }
+    }
+}
+
+fn style(
+    project: &Path,
+    prompt: &str,
+    track: Option<u64>,
+    start: Option<i64>,
+    end: Option<i64>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let loaded = project_file::load(project).map_err(|e| e.to_string())?;
+    let p = loaded.project;
+    let t = match track {
+        Some(id) => p.track(cantor_core::TrackId(id)),
+        None => p.tracks.first(),
+    }
+    .ok_or("no such track")?;
+    let range = cantor_core::TickRange {
+        start: start.unwrap_or_else(|| t.parts.iter().map(|x| x.start).min().unwrap_or(0)),
+        end: end.unwrap_or_else(|| {
+            t.parts
+                .iter()
+                .map(|x| x.start + x.length)
+                .max()
+                .unwrap_or(1)
+        }),
+    };
+    let plan = cantor_core::style::interpret(prompt);
+    let (op, diags) = cantor_core::style::ops(&p, t.id, range, prompt, &plan);
+    let mut doc = Document::new(p.clone());
+    let result = op.map(|op| {
+        if dry_run {
+            doc.dry_run(&op)
+        } else {
+            doc.apply(op)
+        }
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "plan": plan,
+            "diagnostics": diags,
+            "result": result,
+        }))
+        .expect("results serialize")
+    );
+    match result {
+        Some(r) if r.applied => {
+            if !dry_run {
+                project_file::save(project, doc.project(), Compression::None)
+                    .map_err(|e| format!("{}: {e}", project.display()))?;
+            }
+            Ok(())
+        }
+        Some(_) => Err("the style edits were rejected; nothing changed".into()),
+        None => Err("the prompt changes nothing".into()),
     }
 }
 
