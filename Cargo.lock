@@ -339,7 +339,13 @@ name = "cantor-mcp"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "cantor-core",
+ "cantor-fixtures",
+ "cantor-render",
+ "cantor-server",
  "rmcp",
+ "schemars",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
