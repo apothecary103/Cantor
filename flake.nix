@@ -60,6 +60,8 @@
             vulkan-loader wayland libxkbcommon fontconfig freetype
             xorg.libX11 xorg.libxcb xorg.libXcursor xorg.libXrandr xorg.libXi
             alsa-lib pipewire
+            # cantor-py's test binary links libpython.
+            python3
           ];
 
           # ort 2.0.0-rc.15 targets ONNX Runtime 1.31; nixpkgs is older and
