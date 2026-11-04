@@ -204,6 +204,7 @@ fn ranges_align_to_the_grid() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "timing is meaningless under miri")]
 fn four_minute_track_is_fast() {
     // 960 eighth notes at 120 BPM = 4 minutes, with vibrato and pitd.
     let notes: Vec<_> = (0..960)
