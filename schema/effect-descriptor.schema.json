@@ -33,12 +33,32 @@
   "$defs": {
     "EffectKind": {
       "description": "Built-in effects.",
-      "type": "string",
-      "enum": [
-        "eq",
-        "compressor",
-        "de_esser",
-        "reverb"
+      "oneOf": [
+        {
+          "description": "Parametric equalizer.",
+          "type": "string",
+          "const": "eq"
+        },
+        {
+          "description": "Dynamic range compressor.",
+          "type": "string",
+          "const": "compressor"
+        },
+        {
+          "description": "Sibilance reducer.",
+          "type": "string",
+          "const": "de_esser"
+        },
+        {
+          "description": "Room reverb.",
+          "type": "string",
+          "const": "reverb"
+        },
+        {
+          "description": "Feedback echo.",
+          "type": "string",
+          "const": "delay"
+        }
       ]
     },
     "EffectParam": {

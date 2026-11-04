@@ -1,8 +1,8 @@
-//! The schema registry: JSON Schemas for the public types, generated from
-//! the Rust definitions. `cargo xtask schema` writes them to `schema/`.
+//! JSON Schemas for the public types, generated from the Rust definitions.
+//! `cargo xtask schema` writes them to `schema/`.
 
+use crate::apply::ApplyResult;
 use crate::diag::Diagnostic;
-use crate::document::ApplyResult;
 use crate::effects::EffectDescriptor;
 use crate::model::Project;
 use crate::op::Op;
@@ -27,30 +27,13 @@ pub fn schema_for<T: JsonSchema>() -> Schema {
 
 /// Schemas for cantor-core's public types.
 pub fn registry() -> Vec<SchemaEntry> {
+    let e = |name, schema| SchemaEntry { name, schema };
     vec![
-        SchemaEntry {
-            name: "project",
-            schema: schema_for::<Project>(),
-        },
-        SchemaEntry {
-            name: "op",
-            schema: schema_for::<Op>(),
-        },
-        SchemaEntry {
-            name: "apply-result",
-            schema: schema_for::<ApplyResult>(),
-        },
-        SchemaEntry {
-            name: "diagnostic",
-            schema: schema_for::<Diagnostic>(),
-        },
-        SchemaEntry {
-            name: "param-descriptor",
-            schema: schema_for::<ParamDescriptor>(),
-        },
-        SchemaEntry {
-            name: "effect-descriptor",
-            schema: schema_for::<EffectDescriptor>(),
-        },
+        e("project", schema_for::<Project>()),
+        e("op", schema_for::<Op>()),
+        e("apply-result", schema_for::<ApplyResult>()),
+        e("diagnostic", schema_for::<Diagnostic>()),
+        e("param-descriptor", schema_for::<ParamDescriptor>()),
+        e("effect-descriptor", schema_for::<EffectDescriptor>()),
     ]
 }

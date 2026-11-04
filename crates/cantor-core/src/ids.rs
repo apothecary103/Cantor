@@ -4,9 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Pulses per quarter note. 1920 = 2^7 · 3 · 5, so triplets and
-/// quintuplets of every common note value land on whole ticks.
-pub const PPQ: u32 = 1920;
+/// Pulses per quarter note, the same as UST and USTX.
+pub const PPQ: u32 = 480;
 
 /// A position or length in ticks (see [`PPQ`]).
 pub type Tick = i64;
@@ -15,11 +14,21 @@ macro_rules! id_type {
     ($(#[$doc:meta])* $name:ident, $prefix:literal) => {
         $(#[$doc])*
         #[derive(
-            Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash,
+            Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
             Serialize, Deserialize, JsonSchema,
         )]
         #[serde(transparent)]
         pub struct $name(pub u64);
+
+        impl $name {
+            /// The placeholder id `0`: "assign one for me" in `add_*` ops.
+            pub const UNASSIGNED: Self = Self(0);
+
+            /// Whether this is the placeholder id `0`.
+            pub fn is_unassigned(self) -> bool {
+                self.0 == 0
+            }
+        }
 
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -30,29 +39,15 @@ macro_rules! id_type {
 }
 
 id_type!(
-    /// Identifies a track.
+    /// Identifies a track. `0` (or omitted) in `add_track` means "assign one".
     TrackId,
     "track#"
 );
 id_type!(
-    /// Identifies a part (a region of notes on a track).
-    PartId,
-    "part#"
-);
-id_type!(
-    /// Identifies a note.
+    /// Identifies a note, unique within the project. `0` (or omitted) in
+    /// `add_notes` means "assign one".
     NoteId,
     "note#"
-);
-id_type!(
-    /// Identifies a phrase, the unit of rendering, seeding and retakes.
-    PhraseId,
-    "phrase#"
-);
-id_type!(
-    /// Identifies a take within a phrase's take lane.
-    TakeId,
-    "take#"
 );
 
 /// A document revision. It increases on every change, including undo and

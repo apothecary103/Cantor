@@ -1,179 +1,196 @@
 # Cantor
 
-**An open, fully scriptable singing voice synthesis workstation, built in Rust.**
+**Make UTAU covers in your browser, with or without an AI agent.**
 
-Cantor turns notes and lyrics into sung vocals. One engine serves three kinds
-of users equally:
+Cantor is a singing synthesizer for [UTAU](https://en.wikipedia.org/wiki/Utau)
+voicebanks. It is one program, `cantor`, that runs a piano-roll editor
+in your web browser. An AI agent such as Claude can work on the same
+song at the same time over MCP, and you watch its edits appear live.
 
-- **Musicians** editing by hand in a fast, precise desktop editor.
-- **Scripters** automating anything through Python or the CLI.
-- **AI agents** composing, tuning, rendering and evaluating vocals end to end
-  over MCP, with numeric feedback on every render.
+- **Sings any UTAU voicebank** (`oto.ini`, CV and VCV, `prefix.map`,
+  `.frq` files) through its own built-in resampler. There's nothing else to
+  install, no neural models, and it never downloads anything.
+- **Tunes for you.** It adds portamento, overshoot, vibrato, breaths and
+  dynamics automatically, and can follow the pitch of an original vocal
+  recording.
+- **Shows you numbers.** Every render reports how far the pitch is from the
+  score and from the reference vocal, phrase by phrase, plus loudness,
+  clipping and any lyrics the voicebank can't sing.
+- **Reads your files.** It imports MIDI, UST, USTX (OpenUtau) and MusicXML,
+  and exports WAV, UST and USTX.
+- **Everything is undoable**, including what an agent does. You can save
+  checkpoints and go back to them.
 
-> **Status: pre-alpha.** Cantor is being built milestone by milestone (see
-> [Roadmap](#roadmap)). Most features below are planned, not yet available.
+> Status: early (0.1). It works end to end, but expect rough edges. Bug
+> reports are welcome.
 
-## Why Cantor
+---
 
-- **Headless engine, equal clients.** The desktop app, Python package, CLI and
-  MCP server all drive the same operation API. Nothing is GUI-only.
-- **Every edit is an operation.** Undo branches, macros, replay, diffs and AI
-  dry-runs come for free. Each GUI action shows its Python equivalent in a
-  Script Log, so manual work turns into automation naturally.
-- **Deterministic rendering.** The same project and seeds always produce
-  identical audio.
-- **Closed loop.** Every render reports pitch error, timing, loudness and
-  artifacts, so both people and agents can see exactly what came out.
-- **Works with existing voices.** Runs DiffSinger ONNX voicebanks and classic
-  UTAU (oto.ini) banks.
+## 1. Install
 
-## Planned features
+You need [Rust](https://rustup.rs) (via `rustup`) and Git. Cantor builds
+with a pinned nightly compiler, and `rustup` downloads it automatically the
+first time you build.
 
-**Editing:** piano roll with pitch, phoneme and parameter lanes; smart pitch
-handles; phoneme timing lane; retakes kept as switchable take lanes; layered
-parameters (model prediction + your edits); microtonal pitch; command palette;
-branching history with A/B compare; macro recorder.
+```bash
+git clone https://github.com/apothecary103/Cantor.git
+cd Cantor
+cargo install --locked --path crates/cantor
+```
 
-**Synthesis:** DiffSinger variance and acoustic models, PC-NSF-HiFiGAN vocoder
-with a fast path for pitch-only edits, incremental phrase rendering with a
-content-addressed cache, voice doubling, built-in effects chain.
+This puts a `cantor` command on your PATH (in `~/.cargo/bin`). The first
+build takes a few minutes.
 
-**Languages and phonemes:** WASM phonemizer plugins, neural G2P fallback,
-universal X-SAMPA input.
+<details>
+<summary>Using Nix instead</summary>
 
-**Interop:** import MusicXML, MIDI, USTX, UST and DiffSinger `.ds`; CLAP/VST3/AU
-bridge plugin for DAWs; external backends via OpenUtau's proposed svs.io protocol.
+```bash
+nix develop            # or: direnv allow
+cargo install --locked --path crates/cantor
+```
+</details>
 
-## Platforms
+Cantor runs on macOS 14+ and Linux. Windows isn't tested yet.
 
-| Platform | Status |
+## 2. Add a voicebank
+
+Cantor doesn't ship a voice. Download any UTAU voicebank (many are free;
+read each voicebank's terms) and unzip it into one of these folders:
+
+| Where | When |
 |---|---|
-| macOS 14+ (Apple Silicon) | primary target |
-| macOS (Intel) | best effort |
-| Linux (Wayland/X11, PipeWire) | primary target |
-| Windows | not in v1 |
+| `./voicebanks/` | next to where you run `cantor` |
+| `~/.local/share/cantor/voicebanks/` | Linux / anywhere |
+| `~/Library/Application Support/Cantor/voicebanks/` | macOS |
+| `--voicebanks DIR` or `CANTOR_VOICEBANKS=DIR1:DIR2` | anywhere else |
 
-## Getting started (development)
+Each voicebank is a folder with an `oto.ini` in it; subfolders (pitch
+tiers like `A3/`, `C4/`) are fine. Check what Cantor found:
 
-The development environment is a Nix flake that provides everything,
-including the pinned nightly Rust toolchain (via fenix), ONNX Runtime and the
-native libraries.
-
-### Prerequisites
-
-- [Nix](https://nixos.org) with flakes enabled (works with nix-darwin)
-- [direnv](https://direnv.net) with [nix-direnv](https://github.com/nix-community/nix-direnv) (recommended)
-
-### Enter the environment
-
-```sh
-git clone <repo-url> cantor
-cd cantor
-direnv allow        # or: nix develop
+```bash
+cantor voicebanks
 ```
 
-### Common commands
+## 3. Open the editor
 
-```sh
-cargo xtask ci       # format check, clippy, all tests (the CI gate)
-cargo xtask app      # run the desktop app
-cargo xtask bench    # render and UI benchmarks
-cargo xtask schema   # regenerate JSON Schemas from Rust types
-cargo xtask miri     # Miri on crates with unsafe code
-cargo xtask tsan     # ThreadSanitizer for the audio and engine threads
-nix flake check      # validate the flake
+```bash
+cantor serve              # then open http://127.0.0.1:7878
+cantor serve song.mid     # or start with a file: .cantor, .mid, .ust, .ustx, .musicxml
 ```
 
-### Voicebanks and models
+Cantor only listens on your own computer (127.0.0.1). Stop it with Ctrl+C.
 
-Model weights are never stored in this repository. Tests download fixtures
-by checksum into `tests/fixtures/downloaded/`. For your own use, add
-voicebanks through the app or the CLI and respect each voicebank's license.
+### Your first song
 
-## Using Cantor from code (planned API)
+1. **File ▸ Import file…** (`Ctrl/⌘+I`) a MIDI, UST, USTX or MusicXML
+   file, or press `2` and draw notes.
+2. Double-click a note to type its lyric (kana or romaji). `Tab` moves to
+   the next note. To fill in a whole song, import a `.txt` of the lyrics
+   or paste the text with `Ctrl/⌘+V`.
+3. Choose the voicebank in the track list on the left.
+4. **Tune ▸ Auto pitch**, then **Auto dynamics** and **Insert breaths**.
+5. Press `Space` to play. Cantor renders only what changed, so replays are
+   fast.
+6. Open the **Report** tab on the right to see which phrases are worst.
+   Click one to jump to it and loop it.
+7. **File ▸ Save** writes a `.cantor` project; **File ▸ Export** writes
+   WAV, UST or USTX.
 
-```python
-import cantor as ct
+### Following an original vocal
 
-p = ct.open("song.cantor")
-with p.transaction("soften chorus ends"):
-    for n in p.track("lead").notes(section="chorus"):
-        if n.is_phrase_end:
-            n.curve("breathiness").ramp(to=0.4, over="last 30%")
+Import a WAV of the original singer with **Import file…** (an isolated vocal works best).
+It appears as a **reference**: a blue pitch line behind your notes.
 
-report = p.render(quality="preview")
-print(report.summary())
-```
+- **Tune ▸ Match reference** makes the pitch follow it.
+- `A` switches between your synth and the reference while playing, and
+  `Shift+A` plays both.
+- `D` shades the places where you are more than 50 cents off.
 
-```sh
-cantor render song.cantor -o out.wav --quality final
-cantor analyze song.cantor --json
-```
+### Handy keys
 
-AI agents connect through the MCP server (spec revision 2026-07-28) and get
-tools to describe, edit, retake, render and compare projects. See
-[docs/spec/60-api.md](docs/spec/60-api.md).
-
-## Project layout
-
-```
-crates/       engine crates (core, phon, render, backends, analysis, audio,
-              io, server, mcp, py, bridge, plugin-sdk)
-app/          GPUI desktop application
-xtask/        build, CI, schema generation, packaging
-schema/       generated JSON Schemas (do not edit by hand)
-docs/spec/    product and technical specification
-docs/decisions/  short records of non-obvious decisions
-```
-
-## Documentation
-
-| Document | Contents |
+| Key | Does |
 |---|---|
-| [00-vision](docs/spec/00-vision.md) | goals and principles |
-| [10-stack](docs/spec/10-stack.md) | dependencies, toolchain, Nix setup |
-| [20-architecture](docs/spec/20-architecture.md) | crates, threads, data flow |
-| [30-data-model](docs/spec/30-data-model.md) | project model and operations |
-| [40-algorithms](docs/spec/40-algorithms.md) | synthesis pipeline and formulas |
-| [50-ux](docs/spec/50-ux.md) | editor UX and visual design |
-| [60-api](docs/spec/60-api.md) | Python, CLI, JSON-RPC, MCP |
-| [70-milestones](docs/spec/70-milestones.md) | roadmap and acceptance criteria |
-| [80-research](docs/spec/80-research.md) | background and prior art |
+| `1` `2` `3` `4` | select, draw, knife, pitch pen |
+| `Space` / `Home` | play-pause / back to start |
+| `Enter` or double-click | edit lyric (`Tab` = next note) |
+| `↑` `↓` | transpose a semitone (with `Shift`: an octave) |
+| `←` `→` | move by the grid |
+| `Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z` | undo, redo |
+| `L` | loop (shift-drag the ruler to set it) |
+| `F` | fit to the selection |
+| `?` | all shortcuts |
 
-## Roadmap
+## 4. Let an AI agent make the cover (optional)
 
-- [ ] **M1 Core**: document model, operations, undo tree, importers, Nix + CI
-- [ ] **M2 Neural render**: DiffSinger + vocoder, phrase cache, deterministic output
-- [ ] **M3 Analysis and APIs**: analysis reports, JSON-RPC, Python, MCP
-- [ ] **M4 Desktop app**: piano roll, lanes, takes, Script Log, command palette
-- [ ] **M5 Breadth**: phonemizer SDK, X-SAMPA, UTAU backend, effects, doubling
-- [ ] **M6 DAW bridge**: CLAP/VST3/AU
-- [ ] **M7 Frontier**: newer SVS model adapters, style prompts, voice conversion
+Cantor is an [MCP](https://modelcontextprotocol.io) server, so any MCP
+client can drive it. With Claude Code:
 
-## Contributing
+```bash
+claude mcp add cantor -- cantor mcp
+```
 
-- Every change must pass `cargo xtask ci` inside the Nix shell.
-- The toolchain is a pinned nightly. Changing it is a dedicated PR; see
-  [10-stack](docs/spec/10-stack.md#toolchain-pinned-nightly).
-- Only the unstable Rust features on the allow-list may be used, and
-  `cantor-plugin-sdk` must build on stable Rust.
-- AI coding agents: start with [CLAUDE.md](CLAUDE.md).
+Then ask, for example: *"Make a cover of song.mid with the lyrics in
+lyrics.txt, follow vocal.wav, use voicebank X, and get the pitch within
+25 cents of the reference."* The agent reads Cantor's own guide
+(`cantor://guide`). It imports, tunes, renders, reads the report and fixes
+the worst phrases.
 
-## Ethics
+**Watching it live:** keep `cantor serve` running and point the agent at
+it instead, with `claude mcp add --transport http cantor http://127.0.0.1:7878/mcp`.
+The agent and you then edit the same song. Notes it changes flash in the
+editor, the **History** tab tags its edits, and you can undo any of them.
+The **Connect** button in the editor shows these commands.
 
-Voicebanks declare their license terms, and Cantor shows them in the app,
-the API and at export. Voice cloning and conversion require a consent
-attestation from the voice owner; Cantor refuses to load a cloned voice
-without one. Don't use Cantor to imitate anyone's voice without permission.
+## 5. Command line
+
+Everything the editor does is also available without it:
+
+```bash
+cantor cover --midi song.mid --lyrics lyrics.txt --audio vocal.wav \
+             --singer <voicebank-id> -o out/     # one-shot tuned cover
+cantor import song.ust -o song.cantor
+cantor tune song.cantor auto_pitch --params '{"style":"ballad"}'
+cantor render song.cantor -o song.wav           # prints the report
+cantor export song.cantor ustx -o song.ustx
+cantor --help
+```
+
+`cover` writes `cover.wav`, `cover.cantor` (open it in the editor to
+polish) and `report.json`. Styles are `natural`, `pop`, `ballad`,
+`rock` and `robotic`.
+
+## Troubleshooting
+
+- **"No voicebanks found"**: see step 2. Run `cantor voicebanks` to see
+  what Cantor sees.
+- **A lyric shows in red / "missing alias"**: the voicebank has no sample for
+  that lyric. Check the **Report** tab, then change the lyric or set the
+  alias in **Properties**.
+- **Japanese file names look garbled**: Cantor reads `oto.ini` as UTF-8 or
+  Shift-JIS automatically. If a bank still looks wrong, its files may have
+  been unzipped with the wrong encoding. Unzip it again with a tool that
+  supports Shift-JIS.
+- **Port 7878 is busy**: use `cantor serve --port 8000`.
+- **Old Cantor (v1) projects** open directly. They are converted on load,
+  and Save asks for a new name so the original stays untouched.
+
+## For developers
+
+```bash
+nix develop        # pinned toolchain and tools (or use rustup)
+cargo xtask ci     # format, clippy, all tests: the gate for every change
+cargo xtask serve  # run the editor from source
+```
+
+You can work on the web UI without Rust:
+`python3 -m http.server -d web`, then open `http://localhost:8000/?mock`.
+
+Start with [docs/design.md](docs/design.md) (architecture, data model, API),
+[docs/tuning.md](docs/tuning.md) (UTAU semantics and tuning rules) and
+[docs/agent-guide.md](docs/agent-guide.md). Decisions are recorded in
+[docs/decisions/](docs/decisions/).
 
 ## License
 
-TBD. Planned: dual-licensed under MIT or Apache-2.0, at your option.
-Third-party components keep their own licenses; see THIRD_PARTY_NOTICES.
-
-## Acknowledgements
-
-Cantor builds on ideas and work from [OpenUtau](https://github.com/openutau/OpenUtau),
-[DiffSinger](https://github.com/openvpi/DiffSinger) and the OpenVPI community,
-[Zed's GPUI](https://github.com/zed-industries/zed), and
-[GPUI Kit](https://github.com/longbridge/gpui-kit).
+MIT OR Apache-2.0, at your option. Voicebanks are not part of Cantor and
+keep their own terms; read them before publishing a cover.

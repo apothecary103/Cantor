@@ -6,175 +6,137 @@ expression: "serde_json::json!({\n    \"project\": imported.project, \"diagnosti
   "diagnostics": [
     {
       "code": "musicxml.time_sig_default",
-      "message": "the score has no time signature at its start; assuming 4/4",
-      "severity": "info",
-      "target": {
-        "kind": "time_sig_map"
-      }
+      "level": "info",
+      "message": "the score has no time signature at its start; assuming 4/4"
     },
     {
       "code": "musicxml.lyric_default",
-      "message": "Voice: the part has no lyrics; its 4 notes sing \"la\"",
-      "severity": "info",
-      "target": {
+      "entity": {
         "id": 1,
         "kind": "track"
-      }
+      },
+      "level": "info",
+      "message": "Voice: the part has no lyrics; its 4 notes sing \"a\""
     },
     {
       "code": "musicxml.tempo_default",
-      "message": "the score has no tempo at its start; using 120 BPM",
-      "severity": "info",
-      "target": {
-        "kind": "tempo_map"
-      }
+      "level": "info",
+      "message": "the score has no tempo at its start; using 120 BPM"
     },
     {
       "code": "musicxml.repeats",
-      "message": "1 repeat signs, endings and jumps (the music is imported as written, not unfolded) were not imported",
-      "severity": "warning"
+      "level": "warning",
+      "message": "1 repeat signs, endings and jumps (the music is imported as written, not unfolded) were not imported"
     }
   ],
   "project": {
-    "key_map": [
-      {
-        "scale": "minor",
-        "tick": 0,
-        "tonic": 0
-      }
-    ],
+    "format": 3,
+    "key": {
+      "scale": "minor",
+      "tonic": 0
+    },
     "meta": {
       "artist": "",
       "comment": "",
       "title": "Minimal"
     },
-    "sections": [],
-    "seeds": {},
-    "takes": {},
-    "tempo_map": [
+    "tempo": [
       {
         "bpm": 120.0,
         "tick": 0
       }
     ],
-    "time_sig_map": [
+    "time_sig": [
       {
         "bar": 0,
-        "denominator": 4,
-        "numerator": 4
+        "den": 4,
+        "num": 4
       }
     ],
     "tracks": [
       {
-        "backend": "",
-        "curves": {},
-        "doubling": {
-          "detune_cents": 8.0,
-          "jitter_ms": 12.0,
-          "layers": 1,
-          "seed": 0,
-          "spacing": 0.5,
-          "timbre": 0.5
-        },
-        "effects": [],
         "id": 1,
         "mix": {
           "gain_db": 0.0,
-          "mute": false,
-          "pan": 0.0,
-          "solo": false
+          "pan": 0.0
         },
         "name": "Voice",
-        "parts": [
+        "notes": [
+          {
+            "id": 1,
+            "key": 60,
+            "length": 960,
+            "lyric": "a",
+            "pitch": {
+              "portamento": {
+                "length_ms": 80.0,
+                "overshoot_cents": 0.0,
+                "preparation_cents": 0.0,
+                "shape": "s",
+                "start_ms": -40.0
+              }
+            },
+            "start": 0,
+            "vel": 100.0,
+            "vol": 100.0
+          },
           {
             "id": 2,
-            "length": 15360,
-            "name": "Voice",
-            "notes": [
-              {
-                "expr": {
-                  "portamento": {
-                    "before": 0.6,
-                    "overshoot_cents": 0.0,
-                    "preparation_cents": 0.0
-                  }
-                },
-                "id": 3,
-                "length": 3840,
-                "lyric": "la",
-                "modes": {
-                  "pitch": {},
-                  "pronunciation": {},
-                  "timbre": {}
-                },
-                "pitch_cents": 6000.0,
-                "start": 0
-              },
-              {
-                "expr": {
-                  "portamento": {
-                    "before": 0.6,
-                    "overshoot_cents": 0.0,
-                    "preparation_cents": 0.0
-                  }
-                },
-                "id": 4,
-                "length": 1920,
-                "lyric": "la",
-                "modes": {
-                  "pitch": {},
-                  "pronunciation": {},
-                  "timbre": {}
-                },
-                "pitch_cents": 6300.0,
-                "start": 3840
-              },
-              {
-                "expr": {
-                  "portamento": {
-                    "before": 0.6,
-                    "overshoot_cents": 0.0,
-                    "preparation_cents": 0.0
-                  }
-                },
-                "id": 5,
-                "length": 1920,
-                "lyric": "la",
-                "modes": {
-                  "pitch": {},
-                  "pronunciation": {},
-                  "timbre": {}
-                },
-                "pitch_cents": 6700.0,
-                "start": 5760
-              },
-              {
-                "expr": {
-                  "portamento": {
-                    "before": 0.6,
-                    "overshoot_cents": 0.0,
-                    "preparation_cents": 0.0
-                  }
-                },
-                "id": 6,
-                "length": 7680,
-                "lyric": "la",
-                "modes": {
-                  "pitch": {},
-                  "pronunciation": {},
-                  "timbre": {}
-                },
-                "pitch_cents": 7200.0,
-                "start": 7680
+            "key": 63,
+            "length": 480,
+            "lyric": "a",
+            "pitch": {
+              "portamento": {
+                "length_ms": 80.0,
+                "overshoot_cents": 0.0,
+                "preparation_cents": 0.0,
+                "shape": "s",
+                "start_ms": -40.0
               }
-            ],
-            "start": 0
+            },
+            "start": 960,
+            "vel": 100.0,
+            "vol": 100.0
+          },
+          {
+            "id": 3,
+            "key": 67,
+            "length": 480,
+            "lyric": "a",
+            "pitch": {
+              "portamento": {
+                "length_ms": 80.0,
+                "overshoot_cents": 0.0,
+                "preparation_cents": 0.0,
+                "shape": "s",
+                "start_ms": -40.0
+              }
+            },
+            "start": 1440,
+            "vel": 100.0,
+            "vol": 100.0
+          },
+          {
+            "id": 4,
+            "key": 72,
+            "length": 1920,
+            "lyric": "a",
+            "pitch": {
+              "portamento": {
+                "length_ms": 80.0,
+                "overshoot_cents": 0.0,
+                "preparation_cents": 0.0,
+                "shape": "s",
+                "start_ms": -40.0
+              }
+            },
+            "start": 1920,
+            "vel": 100.0,
+            "vol": 100.0
           }
         ],
-        "singer": {
-          "id": ""
-        },
-        "voice_mix": []
+        "phonemizer": "auto",
+        "singer": ""
       }
     ]
   }

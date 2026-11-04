@@ -1,7 +1,7 @@
 //! MusicXML importer tests.
 
-use cantor_io::import::{Format, ImportError, Imported, import};
-use cantor_io::project_file::{Compression, from_bytes, to_bytes};
+use cantor_io::project_file::{from_bytes, to_bytes};
+use cantor_io::{ImportError, Imported, musicxml};
 use std::path::PathBuf;
 
 /// JSON snapshots with sorted map keys, so they do not depend on whether
@@ -22,7 +22,7 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 fn import_xml(bytes: &[u8]) -> Result<Imported, ImportError> {
-    import(bytes, Format::MusicXml)
+    musicxml::import(bytes)
 }
 
 fn snapshot(name: &str) -> Imported {
@@ -70,7 +70,7 @@ fn minimal() {
 fn round_trips_through_project_file() {
     for name in ["duet", "minimal"] {
         let imported = import_xml(&fixture(&format!("{name}.musicxml"))).expect("imports");
-        let bytes = to_bytes(&imported.project, Compression::None);
+        let bytes = to_bytes(&imported.project);
         let loaded = from_bytes(&bytes).expect("loads");
         assert_eq!(loaded.project, imported.project, "{name}");
         assert!(
@@ -78,7 +78,6 @@ fn round_trips_through_project_file() {
             "{name}: {:?}",
             loaded.diagnostics
         );
-        assert_eq!(loaded.migrated_from, None);
     }
 }
 
@@ -182,9 +181,10 @@ fn inexact_divisions_are_rounded_once() {
          <note><rest/><duration>26</duration></note></measure>",
     );
     let imported = import_xml(xml.as_bytes()).expect("imports");
-    let notes = &imported.project.tracks[0].parts[0].notes;
-    assert_eq!((notes[0].start, notes[0].length), (0, 274));
-    assert_eq!((notes[1].start, notes[1].length), (274, 275));
+    let notes = &imported.project.tracks[0].notes;
+    assert_eq!((notes[0].start, notes[0].length), (0, 69));
+    // 480/7 ticks per division: positions round once (68.6 -> 69, 137.1 -> 137).
+    assert_eq!((notes[1].start, notes[1].length), (69, 68));
     assert_eq!(
         codes(&imported)
             .iter()
@@ -207,7 +207,7 @@ fn unpitched_and_cue_notes_are_skipped_with_diagnostics() {
          </measure>",
     );
     let imported = import_xml(xml.as_bytes()).expect("imports");
-    assert_eq!(imported.project.tracks[0].parts[0].notes.len(), 1);
+    assert_eq!(imported.project.tracks[0].notes.len(), 1);
     let codes = codes(&imported);
     assert!(codes.contains(&"musicxml.unpitched"), "{codes:?}");
     assert!(codes.contains(&"musicxml.cue"), "{codes:?}");
@@ -225,10 +225,7 @@ fn transposed_part_sounds_at_concert_pitch() {
          <lyric><text>do</text></lyric></note></measure>",
     );
     let imported = import_xml(xml.as_bytes()).expect("imports");
-    assert_eq!(
-        imported.project.tracks[0].parts[0].notes[0].pitch_cents,
-        6000.0
-    );
-    assert_eq!(imported.project.key_map[0].tonic, 0); // D major written = C major sounding
+    assert_eq!(imported.project.tracks[0].notes[0].key, 60);
+    assert_eq!(imported.project.key.unwrap().tonic, 0); // D major written = C major sounding
     assert!(codes(&imported).contains(&"musicxml.transpose"));
 }

@@ -4,7 +4,7 @@ use ebur128::{EbuR128, Mode};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Loudness of a stereo mix.
+/// Loudness of a mix.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Loudness {
     /// Integrated loudness in LUFS; `None` for silence or very short audio.
@@ -25,10 +25,12 @@ fn finite(x: f64) -> Option<f64> {
     x.is_finite().then_some(x)
 }
 
-/// Measures interleaved stereo samples.
-pub fn measure(stereo: &[f32], sample_rate: u32) -> Loudness {
+/// Measures interleaved samples with `channels` channels (1 or 2 for
+/// BS.1770 weighting: mono is measured as one front channel).
+pub fn measure(samples: &[f32], channels: u32, sample_rate: u32) -> Loudness {
+    let channels = channels.max(1);
     let Ok(mut m) = EbuR128::new(
-        2,
+        channels,
         sample_rate,
         Mode::I | Mode::S | Mode::LRA | Mode::TRUE_PEAK | Mode::SAMPLE_PEAK,
     ) else {
@@ -37,7 +39,8 @@ pub fn measure(stereo: &[f32], sample_rate: u32) -> Loudness {
     let frames_per_sec = sample_rate as usize;
     let mut short_term = Vec::new();
     let mut max_st = f64::NEG_INFINITY;
-    for chunk in stereo.chunks(frames_per_sec * 2) {
+    for chunk in samples.chunks(frames_per_sec * channels as usize) {
+        let chunk = &chunk[..chunk.len() - chunk.len() % channels as usize];
         if m.add_frames_f32(chunk).is_err() {
             return Loudness::default();
         }
@@ -48,7 +51,9 @@ pub fn measure(stereo: &[f32], sample_rate: u32) -> Loudness {
         short_term.push(st);
     }
     let peak = |f: &dyn Fn(u32) -> Result<f64, ebur128::Error>| {
-        let p = f(0).unwrap_or(0.0).max(f(1).unwrap_or(0.0));
+        let p = (0..channels)
+            .map(|c| f(c).unwrap_or(0.0))
+            .fold(0.0, f64::max);
         (p > 0.0).then(|| 20.0 * p.log10())
     };
     Loudness {
@@ -65,9 +70,9 @@ pub fn measure(stereo: &[f32], sample_rate: u32) -> Loudness {
 mod tests {
     use super::*;
 
-    /// A full-scale 997 Hz sine in both channels reads about −3 LUFS
-    /// (BS.1770 reference: 0 dBFS sine on one channel ≈ −3.01 LUFS; both
-    /// channels add 3 dB).
+    /// A −20 dBFS 997 Hz sine in both channels reads −20 LUFS (BS.1770:
+    /// a 0 dBFS sine on one channel ≈ −3.01 LUFS; the second channel adds
+    /// 3 dB). True peak of a sine is its amplitude.
     #[test]
     fn sine_reference_level() {
         let sr = 48_000;
@@ -78,12 +83,16 @@ mod tests {
                 [s, s]
             })
             .collect();
-        let l = measure(&stereo, sr);
+        let l = measure(&stereo, 2, sr);
         let i = l.integrated_lufs.unwrap();
         assert!((i - (-20.0)).abs() < 0.2, "integrated {i}");
         assert!((l.sample_peak_dbfs.unwrap() + 20.0).abs() < 0.1);
+        assert!((l.true_peak_dbtp.unwrap() + 20.0).abs() < 0.2);
+        let mono: Vec<f32> = stereo.iter().step_by(2).copied().collect();
+        let m = measure(&mono, 1, sr).integrated_lufs.unwrap();
+        assert!((m - (-23.0)).abs() < 0.2, "mono {m}");
         assert_eq!(
-            measure(&vec![0.0; 2 * sr as usize], sr).integrated_lufs,
+            measure(&vec![0.0; 2 * sr as usize], 2, sr).integrated_lufs,
             None
         );
     }

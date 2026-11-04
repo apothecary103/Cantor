@@ -1,7 +1,7 @@
 //! OpenUtau USTX import tests.
 
-use cantor_io::import::{ImportError, Imported, ustx};
-use cantor_io::project_file::{self, Compression};
+use cantor_io::project_file;
+use cantor_io::{ImportError, Imported, ustx};
 use std::path::PathBuf;
 
 /// JSON snapshots with sorted map keys, so they do not depend on whether
@@ -67,17 +67,13 @@ fn import_is_deterministic() {
 fn round_trips_through_project_file() {
     for name in ["basic.ustx", "legacy.ustx"] {
         let project = import_fixture(name).project;
-        for compression in [Compression::None, Compression::Zstd(3)] {
-            let bytes = project_file::to_bytes(&project, compression);
-            let loaded = project_file::from_bytes(&bytes).expect("loads");
-            assert_eq!(loaded.project, project, "{name}");
-            assert!(
-                loaded.diagnostics.is_empty(),
-                "{name}: {:?}",
-                loaded.diagnostics
-            );
-            assert_eq!(loaded.migrated_from, None);
-        }
+        let loaded = project_file::from_bytes(&project_file::to_bytes(&project)).expect("loads");
+        assert_eq!(loaded.project, project, "{name}");
+        assert!(
+            loaded.diagnostics.is_empty(),
+            "{name}: {:?}",
+            loaded.diagnostics
+        );
     }
 }
 
@@ -130,9 +126,9 @@ voice_parts:
         .find(|d| d.code == "ustx.resolution_inexact")
         .expect("inexact diagnostic");
     assert!(diag.message.contains("1000"), "{}", diag.message);
-    let note = &imported.project.tracks[0].parts[0].notes[0];
-    // 1 / 1000 quarter notes = 1.92 ticks -> 2; end 1000/1000 = 1920.
-    assert_eq!((note.start, note.length), (2, 1918));
+    let note = &imported.project.tracks[0].notes[0];
+    // 1/1000 quarter = 0.48 ticks -> 0; end 1000/1000 quarter = 480.
+    assert_eq!((note.start, note.length), (0, 480));
 }
 
 #[test]
@@ -155,13 +151,13 @@ fn repeated_problems_are_aggregated() {
     let imported = ustx::import(yaml.as_bytes()).expect("imports");
     let count = |code: &str| codes(&imported).iter().filter(|c| **c == code).count();
     assert_eq!(count("ustx.lyric_extension"), 1);
-    assert_eq!(count("ustx.phoneme_override_unsupported"), 1);
+    assert_eq!(count("ustx.phoneme_override"), 1);
     let ext = imported
         .diagnostics
         .iter()
         .find(|d| d.code == "ustx.lyric_extension")
         .unwrap();
-    assert!(ext.message.contains("500 notes"), "{}", ext.message);
+    assert!(ext.message.contains("500×"), "{}", ext.message);
 }
 
 #[test]
@@ -171,11 +167,7 @@ fn parts_on_missing_tracks_are_reported_not_fatal() {
     let imported = ustx::import(yaml).expect("imports");
     assert_eq!(
         codes(&imported),
-        [
-            "ustx.tempo_missing",
-            "ustx.time_sig_missing_start",
-            "ustx.part_track_missing"
-        ]
+        ["ustx.tempo_missing", "ustx.part_track_missing"]
     );
     assert!(imported.project.tracks.is_empty());
 }

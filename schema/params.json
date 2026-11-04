@@ -1,74 +1,267 @@
-[
-  {
-    "id": "pitch",
-    "name": "Pitch deviation",
-    "unit": "cents",
-    "min": -2400.0,
-    "max": 2400.0,
-    "default": 0.0,
-    "description": "Offset from the base pitch derived from notes, portamento and vibrato."
-  },
-  {
-    "id": "energy",
-    "name": "Energy",
-    "unit": "dB",
-    "min": -96.0,
-    "max": 12.0,
-    "default": 0.0,
-    "description": "Loudness of the voice relative to the model's neutral level."
-  },
-  {
-    "id": "breathiness",
-    "name": "Breathiness",
-    "unit": "dB",
-    "min": -96.0,
-    "max": 12.0,
-    "default": 0.0,
-    "description": "Level of aspiration noise relative to the model's neutral level."
-  },
-  {
-    "id": "voicing",
-    "name": "Voicing",
-    "unit": "dB",
-    "min": -96.0,
-    "max": 12.0,
-    "default": 0.0,
-    "description": "Level of the harmonic (voiced) component."
-  },
-  {
-    "id": "tension",
-    "name": "Tension",
-    "unit": "logit",
-    "min": -10.0,
-    "max": 10.0,
-    "default": 0.0,
-    "description": "Vocal effort; positive is tenser, negative is softer."
-  },
-  {
-    "id": "gender",
-    "name": "Gender",
-    "unit": "semitones",
-    "min": -12.0,
-    "max": 12.0,
-    "default": 0.0,
-    "description": "Formant shift; positive sounds smaller and brighter."
-  },
-  {
-    "id": "velocity",
-    "name": "Velocity",
-    "unit": "ratio",
-    "min": 0.25,
-    "max": 4.0,
-    "default": 1.0,
-    "description": "Consonant speed multiplier."
-  },
-  {
-    "id": "mouth_opening",
-    "name": "Mouth opening",
-    "unit": "ratio",
-    "min": 0.0,
-    "max": 1.0,
-    "default": 0.5,
-    "description": "Jaw and mouth opening, where the backend supports it."
-  }
-]
+{
+  "curves": [
+    {
+      "default": 0.0,
+      "description": "Added to the note pitch (after portamento, vibrato and bends); for what the note parameters cannot express.",
+      "id": "pitd",
+      "max": 1200.0,
+      "min": -1200.0,
+      "name": "Pitch deviation",
+      "unit": "cents"
+    },
+    {
+      "default": 0.0,
+      "description": "Loudness offset.",
+      "id": "dyn",
+      "max": 12.0,
+      "min": -24.0,
+      "name": "Dynamics",
+      "unit": "dB"
+    },
+    {
+      "default": 0.0,
+      "description": "Formant shift; positive is deeper / more masculine, negative brighter / more feminine.",
+      "id": "gen",
+      "max": 100.0,
+      "min": -100.0,
+      "name": "Gender",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "Mix of aperiodic (breath) noise into the voice.",
+      "id": "bre",
+      "max": 100.0,
+      "min": 0.0,
+      "name": "Breathiness",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "Spectral tilt; positive is brighter and tenser, negative darker and softer.",
+      "id": "bri",
+      "max": 100.0,
+      "min": -100.0,
+      "name": "Brightness",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "Timbre shift independent of pitch, as if the sample were sung higher or lower.",
+      "id": "tone",
+      "max": 12.0,
+      "min": -12.0,
+      "name": "Tone",
+      "unit": "semitones"
+    }
+  ],
+  "notes": [
+    {
+      "default": 100.0,
+      "description": "Consonant velocity; above 100 shortens the consonant, below lengthens it.",
+      "id": "vel",
+      "max": 200.0,
+      "min": 0.0,
+      "name": "Velocity",
+      "unit": "%"
+    },
+    {
+      "default": 100.0,
+      "description": "Note intensity.",
+      "id": "vol",
+      "max": 200.0,
+      "min": 0.0,
+      "name": "Volume",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "How much of the sample's own pitch wobble is kept.",
+      "id": "mod",
+      "max": 100.0,
+      "min": 0.0,
+      "name": "Modulation",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "How early the sample starts before the note; unset uses the oto.ini value.",
+      "id": "timing.preutter_ms",
+      "max": 2000.0,
+      "min": 0.0,
+      "name": "Pre-utterance",
+      "unit": "ms"
+    },
+    {
+      "default": 0.0,
+      "description": "Crossfade with the previous note; unset uses the oto.ini value.",
+      "id": "timing.overlap_ms",
+      "max": 2000.0,
+      "min": -1000.0,
+      "name": "Overlap",
+      "unit": "ms"
+    },
+    {
+      "default": 0.0,
+      "description": "Extra offset into the sample.",
+      "id": "timing.offset_ms",
+      "max": 1000.0,
+      "min": -1000.0,
+      "name": "Start offset",
+      "unit": "ms"
+    },
+    {
+      "default": 80.0,
+      "description": "Duration of the glide from the previous note; 0 is a hard step.",
+      "id": "portamento.length_ms",
+      "max": 1000.0,
+      "min": 0.0,
+      "name": "Portamento length",
+      "unit": "ms"
+    },
+    {
+      "default": -40.0,
+      "description": "Where the glide starts relative to the note start; negative is before.",
+      "id": "portamento.start_ms",
+      "max": 1000.0,
+      "min": -1000.0,
+      "name": "Portamento start",
+      "unit": "ms"
+    },
+    {
+      "default": 0.0,
+      "description": "How far the glide goes past the target before settling.",
+      "id": "portamento.overshoot_cents",
+      "max": 200.0,
+      "min": 0.0,
+      "name": "Overshoot",
+      "unit": "cents"
+    },
+    {
+      "default": 0.0,
+      "description": "Dip opposite to the jump just before the glide.",
+      "id": "portamento.preparation_cents",
+      "max": 200.0,
+      "min": 0.0,
+      "name": "Preparation",
+      "unit": "cents"
+    },
+    {
+      "default": -150.0,
+      "description": "Pitch the note starts at relative to its target; negative is below.",
+      "id": "scoop.cents",
+      "max": 1200.0,
+      "min": -1200.0,
+      "name": "Scoop depth",
+      "unit": "cents"
+    },
+    {
+      "default": 100.0,
+      "description": "Time to bend from the scoop start to the target.",
+      "id": "scoop.length_ms",
+      "max": 2000.0,
+      "min": 0.0,
+      "name": "Scoop length",
+      "unit": "ms"
+    },
+    {
+      "default": -300.0,
+      "description": "Pitch reached at the note's end; negative drops.",
+      "id": "fall.cents",
+      "max": 1200.0,
+      "min": -1200.0,
+      "name": "Fall depth",
+      "unit": "cents"
+    },
+    {
+      "default": 150.0,
+      "description": "Duration of the fall, ending at the note's end.",
+      "id": "fall.length_ms",
+      "max": 2000.0,
+      "min": 0.0,
+      "name": "Fall length",
+      "unit": "ms"
+    },
+    {
+      "default": 65.0,
+      "description": "Share of the note, from its end, that vibrates.",
+      "id": "vibrato.length",
+      "max": 100.0,
+      "min": 0.0,
+      "name": "Vibrato length",
+      "unit": "%"
+    },
+    {
+      "default": 175.0,
+      "description": "One cycle (1000 / rate in Hz); 150..220 is typical.",
+      "id": "vibrato.period_ms",
+      "max": 1000.0,
+      "min": 50.0,
+      "name": "Vibrato period",
+      "unit": "ms"
+    },
+    {
+      "default": 20.0,
+      "description": "Half the peak-to-peak swing.",
+      "id": "vibrato.depth_cents",
+      "max": 200.0,
+      "min": 0.0,
+      "name": "Vibrato depth",
+      "unit": "cents"
+    },
+    {
+      "default": 30.0,
+      "description": "Share of the vibrato over which depth grows from 0.",
+      "id": "vibrato.fade_in",
+      "max": 100.0,
+      "min": 0.0,
+      "name": "Vibrato fade-in",
+      "unit": "%"
+    },
+    {
+      "default": 20.0,
+      "description": "Share of the vibrato over which depth shrinks to 0.",
+      "id": "vibrato.fade_out",
+      "max": 100.0,
+      "min": 0.0,
+      "name": "Vibrato fade-out",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "Starting phase.",
+      "id": "vibrato.phase",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Vibrato phase",
+      "unit": "cycles"
+    },
+    {
+      "default": 0.0,
+      "description": "Center offset as a share of depth.",
+      "id": "vibrato.shift",
+      "max": 100.0,
+      "min": -100.0,
+      "name": "Vibrato shift",
+      "unit": "%"
+    },
+    {
+      "default": 0.0,
+      "description": "Slow random wander of rate and depth, seeded by the note id.",
+      "id": "vibrato.drift",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Vibrato drift",
+      "unit": "ratio"
+    },
+    {
+      "default": 0.0,
+      "description": "Pitch offset of an extra bend point.",
+      "id": "points.cents",
+      "max": 1200.0,
+      "min": -1200.0,
+      "name": "Bend point",
+      "unit": "cents"
+    }
+  ]
+}

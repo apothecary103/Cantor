@@ -1,66 +1,149 @@
-//! The document model.
+//! The project model, file format v3 (docs/design.md, "Model").
 //!
-//! A [`Project`] is always kept in canonical form (see
-//! [`Project::canonicalize`]) so that equal documents serialize to equal
-//! bytes. Ops preserve canonical form; loaders and importers establish it.
+//! Every struct rejects unknown fields and fills omitted ones with
+//! defaults, so clients can send minimal JSON: a note needs only `start`,
+//! `length`, `key` and `lyric`.
 
-use crate::diag::{Diagnostic, EntityRef};
-use crate::ids::{NoteId, PartId, PhraseId, TakeId, Tick, TrackId};
+use crate::ids::{NoteId, Tick, TrackId};
 use crate::params::ParamId;
 use crate::time::{TempoMap, TimeSigMap};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-/// A Cantor project.
+/// The current project file format.
+pub const FORMAT: u32 = 3;
+
+fn format_v3() -> u32 {
+    FORMAT
+}
+fn pct100() -> f64 {
+    100.0
+}
+fn yes() -> bool {
+    true
+}
+fn is_false(b: &bool) -> bool {
+    !b
+}
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
+}
+
+/// A song: tempo, meter, sections, an optional reference recording and
+/// singing tracks.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
-    /// Title and credits.
+    /// File format version; always 3.
+    #[serde(default = "format_v3")]
+    pub format: u32,
+    /// Title, artist and comment.
     #[serde(default)]
     pub meta: Meta,
     /// Tempo changes, sorted by tick; the first is at tick 0.
-    pub tempo_map: Vec<TempoPoint>,
+    #[serde(default = "default_tempo")]
+    pub tempo: Vec<TempoPoint>,
     /// Time-signature changes, sorted by bar; the first is at bar 0.
-    pub time_sig_map: Vec<TimeSigPoint>,
-    /// Key changes, sorted by tick. Drives scale highlighting and snapping.
-    #[serde(default)]
-    pub key_map: Vec<KeyPoint>,
-    /// Tracks in display order.
+    #[serde(default = "default_time_sig")]
+    pub time_sig: Vec<TimeSigPoint>,
+    /// The song's key, for highlighting and snapping. `null` = none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<Key>,
+    /// Named sections (verse, chorus, ...), sorted by start.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sections: Vec<Section>,
+    /// The original song's vocal or mix, for A/B listening, pitch matching
+    /// and render reports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<Reference>,
+    /// Singing tracks, in display order.
     #[serde(default)]
     pub tracks: Vec<Track>,
-    /// Diffusion noise seed per phrase.
-    #[serde(default)]
-    pub seeds: BTreeMap<PhraseId, u64>,
-    /// Retakes per phrase. Takes are kept, not discarded.
-    #[serde(default)]
-    pub takes: BTreeMap<PhraseId, TakeLane>,
-    /// Named song sections (verse, chorus, ...), sorted by start.
-    #[serde(default)]
-    pub sections: Vec<Section>,
 }
 
-/// A named region of the song, such as a verse or chorus.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Section {
-    /// Unique name.
-    pub name: String,
-    /// First tick.
-    pub start: Tick,
-    /// First tick after the section.
-    pub end: Tick,
+fn default_tempo() -> Vec<TempoPoint> {
+    vec![TempoPoint::default()]
+}
+fn default_time_sig() -> Vec<TimeSigPoint> {
+    vec![TimeSigPoint::default()]
 }
 
-/// Title and credits.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+impl Default for Project {
+    fn default() -> Self {
+        Self {
+            format: FORMAT,
+            meta: Meta::default(),
+            tempo: default_tempo(),
+            time_sig: default_time_sig(),
+            key: None,
+            sections: Vec::new(),
+            reference: None,
+            tracks: Vec::new(),
+        }
+    }
+}
+
+impl Project {
+    /// The tempo map, for tick ↔ second conversion.
+    pub fn tempo_map(&self) -> TempoMap {
+        TempoMap::new(&self.tempo)
+    }
+
+    /// The time-signature map, for bar ↔ tick conversion.
+    pub fn time_sig_map(&self) -> TimeSigMap {
+        TimeSigMap::new(&self.time_sig)
+    }
+
+    /// Looks up a track.
+    pub fn track(&self, id: TrackId) -> Option<&Track> {
+        self.tracks.iter().find(|t| t.id == id)
+    }
+
+    /// Looks up a track for mutation.
+    pub fn track_mut(&mut self, id: TrackId) -> Option<&mut Track> {
+        self.tracks.iter_mut().find(|t| t.id == id)
+    }
+
+    /// Finds a note in any track.
+    pub fn find_note(&self, id: NoteId) -> Option<(&Track, &Note)> {
+        self.tracks.iter().find_map(|t| t.note(id).map(|n| (t, n)))
+    }
+
+    /// The largest note id in use, or 0.
+    pub fn max_note_id(&self) -> NoteId {
+        self.tracks
+            .iter()
+            .flat_map(|t| &t.notes)
+            .map(|n| n.id)
+            .max()
+            .unwrap_or_default()
+    }
+
+    /// The largest track id in use, or 0.
+    pub fn max_track_id(&self) -> TrackId {
+        self.tracks.iter().map(|t| t.id).max().unwrap_or_default()
+    }
+
+    /// The end of the last note of any track.
+    pub fn end_tick(&self) -> Tick {
+        self.tracks
+            .iter()
+            .filter_map(|t| t.notes.iter().map(Note::end).max())
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+/// Free-form project information.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 pub struct Meta {
     /// Song title.
     pub title: String,
-    /// Artist or author.
+    /// Original artist.
     pub artist: String,
-    /// Free-form notes.
+    /// Notes about the project.
     pub comment: String,
 }
 
@@ -68,122 +151,266 @@ pub struct Meta {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TempoPoint {
-    /// Where the tempo takes effect.
+    /// Where the tempo starts, in ticks (480 per quarter note).
     pub tick: Tick,
-    /// Quarter notes per minute.
+    /// Quarter notes per minute, 10..=1000.
     pub bpm: f64,
 }
 
-/// A time-signature change, at the start of a bar.
+impl Default for TempoPoint {
+    fn default() -> Self {
+        Self {
+            tick: 0,
+            bpm: 120.0,
+        }
+    }
+}
+
+/// A time-signature change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TimeSigPoint {
-    /// 0-based bar where the signature takes effect.
+    /// The 0-based bar where the signature starts.
     pub bar: u32,
-    /// Beats per bar.
-    pub numerator: u8,
-    /// Beat unit, a power of two.
-    pub denominator: u8,
+    /// Beats per bar, 1..=32.
+    pub num: u8,
+    /// Beat unit: 1, 2, 4, 8, 16 or 32.
+    pub den: u8,
 }
 
-/// A key change.
+impl Default for TimeSigPoint {
+    fn default() -> Self {
+        Self {
+            bar: 0,
+            num: 4,
+            den: 4,
+        }
+    }
+}
+
+/// A musical key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct KeyPoint {
-    /// Where the key takes effect.
-    pub tick: Tick,
-    /// Tonic pitch class, 0 = C … 11 = B.
+pub struct Key {
+    /// Pitch class of the tonic, 0 (C) ..= 11 (B).
     pub tonic: u8,
-    /// Scale or mode.
+    /// The scale.
+    #[serde(default)]
     pub scale: Scale,
 }
 
-/// A scale or mode for key signatures.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// Scales for key highlighting and snapping.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[allow(missing_docs)]
 pub enum Scale {
+    #[default]
     Major,
+    /// Natural minor.
     Minor,
+    HarmonicMinor,
     Dorian,
-    Phrygian,
-    Lydian,
-    Mixolydian,
-    Locrian,
-    Chromatic,
+    /// Major pentatonic.
+    Pentatonic,
+    MinorPentatonic,
 }
 
-/// A singing track.
+impl Scale {
+    /// Semitone offsets of the scale degrees from the tonic.
+    pub fn steps(self) -> &'static [u8] {
+        match self {
+            Scale::Major => &[0, 2, 4, 5, 7, 9, 11],
+            Scale::Minor => &[0, 2, 3, 5, 7, 8, 10],
+            Scale::HarmonicMinor => &[0, 2, 3, 5, 7, 8, 11],
+            Scale::Dorian => &[0, 2, 3, 5, 7, 9, 10],
+            Scale::Pentatonic => &[0, 2, 4, 7, 9],
+            Scale::MinorPentatonic => &[0, 3, 5, 7, 10],
+        }
+    }
+}
+
+impl Key {
+    /// Whether MIDI note `key` is in this key.
+    pub fn contains(&self, key: u8) -> bool {
+        let pc = (u16::from(key) + 12 - u16::from(self.tonic % 12)) % 12;
+        self.scale.steps().contains(&(pc as u8))
+    }
+}
+
+/// A named span of the song.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Section {
+    /// Name, such as "verse 1" or "chorus".
+    pub name: String,
+    /// First tick.
+    pub start: Tick,
+    /// Tick after the last; greater than `start`.
+    pub end: Tick,
+}
+
+/// The original recording a cover is made from.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Reference {
+    /// Audio file, relative to the project file (or absolute).
+    pub path: String,
+    /// Time in the audio file, in ms, that lines up with tick 0.
+    #[serde(default)]
+    pub offset_ms: f64,
+    /// Playback gain in dB, -60..=12.
+    #[serde(default)]
+    pub gain_db: f64,
+    /// Whether playback of the reference is muted.
+    #[serde(default)]
+    pub muted: bool,
+}
+
+/// How lyrics become oto.ini aliases.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Phonemizer {
+    /// Pick from the voicebank's aliases (CV, VCV or CVVC).
+    #[default]
+    Auto,
+    /// Japanese CV: one alias per kana ("あ", "か").
+    JpCv,
+    /// Japanese VCV: "a か" style aliases, previous vowel first.
+    JpVcv,
+    /// Japanese CVVC: CV aliases plus "a k" vowel-consonant links.
+    JpCvvc,
+    /// English ARPAsing (arpabet aliases).
+    EnArpasing,
+    /// The lyric is the alias, unchanged.
+    Raw,
+}
+
+/// A singing track: one voicebank singing a monophonic line.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Track {
-    /// Unique id.
+    /// Unique id. Omit (or 0) in `add_track` to have one assigned.
+    #[serde(default)]
     pub id: TrackId,
     /// Display name.
+    #[serde(default)]
     pub name: String,
-    /// The voice that sings this track.
-    pub singer: SingerRef,
-    /// The synthesis backend.
-    pub backend: BackendRef,
+    /// Voicebank id, as listed by `list_voicebanks`. Empty = no singer.
+    #[serde(default)]
+    pub singer: String,
+    /// How lyrics become aliases.
+    #[serde(default)]
+    pub phonemizer: Phonemizer,
+    /// Default resampler flags for every note, such as "g-5B40".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub flags: String,
     /// Gain, pan, mute and solo.
     #[serde(default)]
     pub mix: Mix,
     /// Post-processing chain, in order.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<EffectSlot>,
-    /// Voice doubling.
+    /// Expression curves by parameter id (pitd, dyn, gen, bre, bri, tone).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub curves: BTreeMap<ParamId, Curve>,
+    /// Notes sorted by (start, id), in absolute ticks; they never overlap.
     #[serde(default)]
-    pub doubling: Doubling,
-    /// Timbre blending with other singers, if the backend supports it.
-    #[serde(default)]
-    pub voice_mix: Vec<VoiceMixEntry>,
-    /// Layered parameter curves, in absolute ticks.
-    #[serde(default)]
-    pub curves: BTreeMap<ParamId, LayeredCurve>,
-    /// Parts, sorted by (start, id).
-    #[serde(default)]
-    pub parts: Vec<Part>,
+    pub notes: Vec<Note>,
 }
 
-/// Names a singer (voicebank).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SingerRef {
-    /// Singer identifier; empty means none selected.
-    pub id: String,
-    /// Singer version, if pinned.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-}
-
-/// Names a synthesis backend, such as `"diffsinger"` or `"utau"`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(transparent)]
-pub struct BackendRef(pub String);
-
-/// Track mixer settings.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields, default)]
-pub struct Mix {
-    /// Gain in dB.
-    pub gain_db: f64,
-    /// Pan, -1 (left) … 1 (right).
-    pub pan: f64,
-    /// Muted.
-    pub mute: bool,
-    /// Soloed.
-    pub solo: bool,
-}
-
-impl Default for Mix {
+impl Default for Track {
     fn default() -> Self {
         Self {
-            gain_db: 0.0,
-            pan: 0.0,
-            mute: false,
-            solo: false,
+            id: TrackId::UNASSIGNED,
+            name: String::new(),
+            singer: String::new(),
+            phonemizer: Phonemizer::Auto,
+            flags: String::new(),
+            mix: Mix::default(),
+            effects: Vec::new(),
+            curves: BTreeMap::new(),
+            notes: Vec::new(),
         }
     }
+}
+
+impl Track {
+    /// The index of a note in `notes`.
+    pub fn note_index(&self, id: NoteId) -> Option<usize> {
+        self.notes.iter().position(|n| n.id == id)
+    }
+
+    /// Looks up a note.
+    pub fn note(&self, id: NoteId) -> Option<&Note> {
+        self.notes.iter().find(|n| n.id == id)
+    }
+
+    /// Looks up a note for mutation. Re-sort with
+    /// [`Project::canonicalize`] after moving it.
+    pub fn note_mut(&mut self, id: NoteId) -> Option<&mut Note> {
+        self.notes.iter_mut().find(|n| n.id == id)
+    }
+
+    /// The notes before and after a note in time order, if any.
+    pub fn neighbors(&self, id: NoteId) -> (Option<&Note>, Option<&Note>) {
+        match self.note_index(id) {
+            Some(i) => (
+                i.checked_sub(1).map(|j| &self.notes[j]),
+                self.notes.get(i + 1),
+            ),
+            None => (None, None),
+        }
+    }
+
+    /// Notes that overlap `[start, end)`, in time order.
+    pub fn notes_in(&self, start: Tick, end: Tick) -> impl Iterator<Item = &Note> {
+        self.notes
+            .iter()
+            .filter(move |n| n.start < end && n.end() > start)
+    }
+
+    /// Every note with its start and end in seconds, in time order.
+    pub fn timed_notes<'a>(&'a self, tempo: &'a TempoMap) -> impl Iterator<Item = TimedNote<'a>> {
+        self.notes.iter().map(move |n| TimedNote {
+            note: n,
+            start_sec: tempo.tick_to_sec(n.start),
+            end_sec: tempo.tick_to_sec(n.end()),
+        })
+    }
+}
+
+/// A note with its position in seconds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TimedNote<'a> {
+    /// The note.
+    pub note: &'a Note,
+    /// Start in seconds.
+    pub start_sec: f64,
+    /// End in seconds.
+    pub end_sec: f64,
+}
+
+impl TimedNote<'_> {
+    /// Duration in seconds.
+    pub fn duration_sec(&self) -> f64 {
+        self.end_sec - self.start_sec
+    }
+}
+
+/// Track gain, pan, mute and solo.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct Mix {
+    /// Gain in dB, -60..=12.
+    pub gain_db: f64,
+    /// Pan, -1 (left) ..= 1 (right).
+    pub pan: f64,
+    /// Silences the track.
+    #[serde(skip_serializing_if = "is_false")]
+    pub mute: bool,
+    /// When any track is soloed, only soloed tracks play.
+    #[serde(skip_serializing_if = "is_false")]
+    pub solo: bool,
 }
 
 /// One effect in a track's chain.
@@ -193,8 +420,10 @@ pub struct EffectSlot {
     /// Which effect.
     pub kind: EffectKind,
     /// Bypassed when false.
+    #[serde(default = "yes")]
     pub enabled: bool,
-    /// Effect parameters by name.
+    /// Parameters by id (see the effect registry); omitted ones take their
+    /// defaults.
     #[serde(default)]
     pub params: BTreeMap<String, f64>,
 }
@@ -202,245 +431,250 @@ pub struct EffectSlot {
 /// Built-in effects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-#[allow(missing_docs)]
 pub enum EffectKind {
+    /// Parametric equalizer.
     Eq,
+    /// Dynamic range compressor.
     Compressor,
+    /// Sibilance reducer.
     DeEsser,
+    /// Room reverb.
     Reverb,
+    /// Feedback echo.
+    Delay,
 }
 
-/// Voice doubling: extra layers with seeded micro-variations.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields, default)]
-pub struct Doubling {
-    /// Number of voices, 1 (off) … 16.
-    pub layers: u8,
-    /// Stereo spread, 0 … 1.
-    pub spacing: f64,
-    /// Pitch variation between layers in cents.
-    pub detune_cents: f64,
-    /// Timing variation between layers in milliseconds.
-    pub jitter_ms: f64,
-    /// Timbre (formant) variation between layers, 0 … 1.
-    pub timbre: f64,
-    /// Seed for the variations.
-    pub seed: u64,
-}
-
-impl Default for Doubling {
-    fn default() -> Self {
-        Self {
-            layers: 1,
-            spacing: 0.5,
-            detune_cents: 8.0,
-            jitter_ms: 12.0,
-            timbre: 0.5,
-            seed: 0,
-        }
-    }
-}
-
-/// A singer blended into a track's timbre.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct VoiceMixEntry {
-    /// The blended singer.
-    pub singer: SingerRef,
-    /// Blend weight, 0 … 1.
-    pub weight: f64,
-}
-
-/// A region of notes on a track. Note positions are relative to `start`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Part {
-    /// Unique id.
-    pub id: PartId,
-    /// Display name.
-    pub name: String,
-    /// Absolute start tick.
-    pub start: Tick,
-    /// Length in ticks.
-    pub length: Tick,
-    /// Notes, sorted by (start, id).
-    #[serde(default)]
-    pub notes: Vec<Note>,
-}
-
-/// A sung note.
+/// A note: a lyric sung at a pitch for a span of ticks.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
-    /// Unique id.
+    /// Unique id within the project. Omit (or 0) in `add_notes` to have one
+    /// assigned.
+    #[serde(default)]
     pub id: NoteId,
-    /// Start tick relative to the part.
+    /// Start in absolute ticks (480 per quarter note), >= 0.
     pub start: Tick,
-    /// Length in ticks, at least 1.
+    /// Length in ticks, > 0.
     pub length: Tick,
-    /// Pitch in cents, MIDI note number × 100. Microtonal by default.
-    pub pitch_cents: f64,
-    /// Lyric text. `+` continues the previous syllable; a leading or
-    /// trailing `-` joins syllables of one word.
+    /// MIDI note number, 0..=127 (60 = C4).
+    pub key: u8,
+    /// What is sung: "あ", "ka", "+" (extend the previous note), "-" (rest
+    /// with breath release), "br" (breath).
     pub lyric: String,
-    /// Language override; `None` uses the singer's default language.
+    /// Forces this exact oto.ini alias; omitted = the phonemizer decides.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lang: Option<LangTag>,
-    /// Phoneme overrides; `None` lets the phonemizer decide.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub phonemes: Option<Vec<PhonemeOverride>>,
-    /// Vibrato, portamento, attack and release.
+    pub alias: Option<String>,
+    /// Consonant velocity in %, 0..=200; above 100 shortens the consonant.
+    #[serde(default = "pct100")]
+    pub vel: f64,
+    /// Intensity (volume) in %, 0..=200.
+    #[serde(default = "pct100")]
+    pub vol: f64,
+    /// Modulation: % of the sample's own pitch wobble kept, 0..=100.
+    #[serde(rename = "mod", default, skip_serializing_if = "is_zero")]
+    pub mod_: f64,
+    /// Resampler flags appended to the track's flags.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub flags: String,
+    /// Overrides of the oto.ini timing.
+    #[serde(default, skip_serializing_if = "Timing::is_default")]
+    pub timing: Timing,
+    /// Portamento, scoop, fall, vibrato and extra bend points.
     #[serde(default)]
-    pub expr: NoteExpr,
-    /// Vocal mode weights.
-    #[serde(default)]
-    pub modes: VocalModes,
+    pub pitch: NotePitch,
 }
 
-/// A BCP 47 language tag, such as `"ja"` or `"en-US"`.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-#[serde(transparent)]
-pub struct LangTag(pub String);
+impl Note {
+    /// A note with default expression.
+    pub fn new(start: Tick, length: Tick, key: u8, lyric: impl Into<String>) -> Self {
+        Self {
+            id: NoteId::UNASSIGNED,
+            start,
+            length,
+            key,
+            lyric: lyric.into(),
+            alias: None,
+            vel: 100.0,
+            vol: 100.0,
+            mod_: 0.0,
+            flags: String::new(),
+            timing: Timing::default(),
+            pitch: NotePitch::default(),
+        }
+    }
 
-/// A user-specified phoneme.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PhonemeOverride {
-    /// Phoneme symbol.
-    pub symbol: String,
-    /// Symbol alphabet.
-    #[serde(default)]
-    pub alphabet: PhonemeAlphabet,
-    /// Onset relative to the note onset in milliseconds; `None` = automatic.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub offset_ms: Option<f64>,
-    /// Pinned length in milliseconds; `None` lets the duration model decide.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub length_ms: Option<f64>,
+    /// The tick after the note's last.
+    pub fn end(&self) -> Tick {
+        self.start + self.length
+    }
+
+    /// Whether the lyric extends the previous note ("+", "+~", "+*", ...).
+    pub fn is_extension(&self) -> bool {
+        self.lyric.starts_with('+')
+    }
+
+    /// Whether the note is a rest or breath ("-", "r", "R", "br", "息",
+    /// "breath" or an empty lyric): it ends a phrase.
+    pub fn is_rest_or_breath(&self) -> bool {
+        matches!(
+            self.lyric.trim(),
+            "" | "-" | "r" | "R" | "rest" | "br" | "息" | "breath"
+        )
+    }
 }
 
-/// Which symbol set a phoneme uses.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PhonemeAlphabet {
-    /// The phonemizer's own symbols.
-    #[default]
-    Native,
-    /// Universal X-SAMPA.
-    XSampa,
+/// Per-note overrides of oto.ini timing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct Timing {
+    /// Pre-utterance in ms (how early the sample starts before the note);
+    /// omitted = the alias's oto value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preutter_ms: Option<f64>,
+    /// Overlap with the previous note in ms; omitted = the oto value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlap_ms: Option<f64>,
+    /// Extra start offset into the sample in ms.
+    pub offset_ms: f64,
 }
 
-/// Note expression.
+impl Timing {
+    /// Whether nothing is overridden.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// A note's pitch expression. The final pitch at time t is
+/// `key·100 + portamento + scoop + fall + vibrato + points + pitd(t)` cents.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
-pub struct NoteExpr {
-    /// Procedural vibrato, if any.
+pub struct NotePitch {
+    /// The glide from the previous note's pitch into this one.
+    pub portamento: Portamento,
+    /// Start below (cents < 0) or above the pitch and bend in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scoop: Option<Bend>,
+    /// Bend away at the note's end (cents < 0 drops).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fall: Option<Bend>,
+    /// Vibrato near the note's end.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vibrato: Option<Vibrato>,
-    /// Transition into this note.
-    pub portamento: Portamento,
-    /// Onset shaping, if any.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attack: Option<Envelope>,
-    /// Release shaping, if any.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub release: Option<Envelope>,
+    /// Extra bend points relative to the note start, interpolated smoothly.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<PitchPoint>,
 }
 
-/// Procedural vibrato: `v(t) = D · env(t) · sin(2π ∫ f(τ)dτ + φ)`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Vibrato {
-    /// Depth D in cents.
-    pub depth_cents: f64,
-    /// Rate in Hz.
-    pub rate_hz: f64,
-    /// Where vibrato starts, as a fraction of the note, 0 … 1.
-    pub start: f64,
-    /// Fade-in length as a fraction of the vibrato, 0 … 1.
-    pub fade_in: f64,
-    /// Fade-out length as a fraction of the vibrato, 0 … 1.
-    pub fade_out: f64,
-    /// Initial phase φ as a fraction of a cycle, 0 … 1.
-    pub phase: f64,
-    /// Random rate drift, 0 … 1 (1 ≈ ±5%).
-    pub drift: f64,
-}
-
-/// Portamento into a note: a cosine-eased transition from the previous pitch.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// The transition from the previous note's pitch into this note.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 pub struct Portamento {
-    /// Transition length in milliseconds; `None` = automatic.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub length_ms: Option<f64>,
-    /// Fraction of the transition before the note boundary, 0 … 1.
-    pub before: f64,
-    /// Overshoot past the target pitch in cents.
+    /// Glide duration in ms, 0..=1000; 0 = hard step.
+    pub length_ms: f64,
+    /// Where the glide starts relative to the note start, in ms,
+    /// -1000..=1000; negative starts before the note.
+    pub start_ms: f64,
+    /// How far past the target the glide goes before settling, in cents,
+    /// 0..=200.
     pub overshoot_cents: f64,
-    /// Dip opposite to the transition direction before it starts, in cents.
+    /// Dip opposite to the jump before the glide, in cents, 0..=200.
     pub preparation_cents: f64,
+    /// Easing of the glide.
+    pub shape: Shape,
 }
 
 impl Default for Portamento {
     fn default() -> Self {
         Self {
-            length_ms: None,
-            before: 0.6,
+            length_ms: 80.0,
+            start_ms: -40.0,
             overshoot_cents: 0.0,
             preparation_cents: 0.0,
+            shape: Shape::S,
         }
     }
 }
 
-/// Attack or release shaping.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// Easing of a glide.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Shape {
+    /// Ease in and out.
+    #[default]
+    S,
+    /// Constant speed.
+    Linear,
+    /// Slow start, fast end.
+    In,
+    /// Fast start, slow end.
+    Out,
+}
+
+/// A bend at a note's start (scoop) or end (fall).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Envelope {
-    /// Length in milliseconds.
+pub struct Bend {
+    /// Pitch offset at the far end of the bend, in cents, -1200..=1200.
+    pub cents: f64,
+    /// Duration in ms, 0..=2000.
     pub length_ms: f64,
-    /// Strength, 0 … 1.
-    pub strength: f64,
 }
 
-/// Vocal mode weights per dimension (SynthV-style pitch / timbre /
-/// pronunciation modes). Mode names come from the singer.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// Vibrato over the end portion of a note.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
-pub struct VocalModes {
-    /// Pitch-mode weights by mode name.
-    pub pitch: BTreeMap<String, f64>,
-    /// Timbre-mode weights by mode name.
-    pub timbre: BTreeMap<String, f64>,
-    /// Pronunciation-mode weights by mode name.
-    pub pronunciation: BTreeMap<String, f64>,
+pub struct Vibrato {
+    /// % of the note, from its end, that vibrates, 0..=100.
+    pub length: f64,
+    /// Period in ms (1000 / rate in Hz), 50..=1000; 150..220 is typical.
+    pub period_ms: f64,
+    /// Depth in cents (half peak-to-peak), 0..=200.
+    pub depth_cents: f64,
+    /// Fade-in as % of the vibrato length, 0..=100.
+    pub fade_in: f64,
+    /// Fade-out as % of the vibrato length, 0..=100.
+    pub fade_out: f64,
+    /// Starting phase as a fraction of a cycle, 0..=1.
+    pub phase: f64,
+    /// Center offset as % of depth, -100..=100.
+    pub shift: f64,
+    /// Slow random wander of rate and depth, 0..=1, seeded by the note id.
+    pub drift: f64,
 }
 
-/// A layered parameter: `final = base(notes) + model_prediction + user_delta`.
-/// Users and agents edit `user_delta`; the backend writes `model_prediction`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct LayeredCurve {
-    /// Produced by the backend; retakeable.
-    #[serde(default)]
-    pub model_prediction: Curve,
-    /// Edited by users and agents.
-    #[serde(default)]
-    pub user_delta: Curve,
-}
-
-impl LayeredCurve {
-    /// True when neither layer has points.
-    pub fn is_empty(&self) -> bool {
-        self.model_prediction.points.is_empty() && self.user_delta.points.is_empty()
+impl Default for Vibrato {
+    fn default() -> Self {
+        Self {
+            length: 65.0,
+            period_ms: 175.0,
+            depth_cents: 20.0,
+            fade_in: 30.0,
+            fade_out: 20.0,
+            phase: 0.0,
+            shift: 0.0,
+            drift: 0.0,
+        }
     }
 }
 
-/// A curve: control points with an interpolation mode.
+/// An extra pitch-bend point within a note.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PitchPoint {
+    /// Time relative to the note start, in ms.
+    pub ms: f64,
+    /// Pitch offset in cents, -1200..=1200.
+    pub cents: f64,
+}
+
+/// A track expression curve: points interpolated over ticks.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Curve {
-    /// `(tick, value)` points with strictly increasing ticks.
+    /// `[tick, value]` pairs sorted by tick with unique ticks. Before the
+    /// first and after the last point the nearest value holds.
+    #[serde(default)]
     pub points: Vec<(Tick, f64)>,
     /// How values between points are interpolated.
     #[serde(default)]
@@ -451,525 +685,11 @@ pub struct Curve {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Interp {
+    /// Straight lines.
+    #[default]
+    Linear,
     /// Hold each value until the next point.
     Step,
-    /// Straight lines.
-    Linear,
-    /// Fritsch–Carlson monotone cubic; never overshoots.
-    #[default]
-    MonotoneHermite,
-}
-
-/// A half-open tick range `[start, end)`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct TickRange {
-    /// First tick in the range.
-    pub start: Tick,
-    /// First tick after the range.
-    pub end: Tick,
-}
-
-impl TickRange {
-    /// Whether `t` lies in the range.
-    pub fn contains(&self, t: Tick) -> bool {
-        self.start <= t && t < self.end
-    }
-}
-
-/// All takes of one phrase.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct TakeLane {
-    /// Every take, oldest first.
-    pub takes: Vec<Take>,
-    /// The take that plays; `None` = the original.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub selected: Option<TakeId>,
-}
-
-/// One retake of a phrase.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Take {
-    /// Unique within the lane.
-    pub id: TakeId,
-    /// Seed used to generate the take.
-    pub seed: u64,
-    /// Which dimensions were re-generated.
-    pub dims: Vec<RetakeDim>,
-    /// Display label.
-    #[serde(default)]
-    pub label: String,
-}
-
-/// A dimension a retake can vary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum RetakeDim {
-    Pitch,
-    Timing,
-    Timbre,
-    Expression,
-}
-
-impl Default for Project {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Project {
-    /// An empty project at 120 BPM in 4/4.
-    pub fn new() -> Self {
-        Self {
-            meta: Meta::default(),
-            tempo_map: vec![TempoPoint {
-                tick: 0,
-                bpm: 120.0,
-            }],
-            time_sig_map: vec![TimeSigPoint {
-                bar: 0,
-                numerator: 4,
-                denominator: 4,
-            }],
-            key_map: Vec::new(),
-            tracks: Vec::new(),
-            seeds: BTreeMap::new(),
-            takes: BTreeMap::new(),
-            sections: Vec::new(),
-        }
-    }
-
-    /// Tick ↔ second conversion for this project's tempo map.
-    pub fn tempo(&self) -> TempoMap {
-        TempoMap::new(&self.tempo_map)
-    }
-
-    /// Bar ↔ tick conversion for this project's time-signature map.
-    pub fn meter(&self) -> TimeSigMap {
-        TimeSigMap::new(&self.time_sig_map)
-    }
-
-    /// Finds a section by name.
-    pub fn section(&self, name: &str) -> Option<&Section> {
-        self.sections.iter().find(|s| s.name == name)
-    }
-
-    /// Finds a track by id.
-    pub fn track(&self, id: TrackId) -> Option<&Track> {
-        self.tracks.iter().find(|t| t.id == id)
-    }
-
-    /// Finds a part by id, with its track.
-    pub fn part(&self, id: PartId) -> Option<(&Track, &Part)> {
-        self.tracks
-            .iter()
-            .find_map(|t| t.parts.iter().find(|p| p.id == id).map(|p| (t, p)))
-    }
-
-    /// Finds a note by id, with its track and part.
-    pub fn note(&self, id: NoteId) -> Option<(&Track, &Part, &Note)> {
-        self.tracks.iter().find_map(|t| {
-            t.parts
-                .iter()
-                .find_map(|p| p.notes.iter().find(|n| n.id == id).map(|n| (t, p, n)))
-        })
-    }
-
-    /// Iterates all notes with their track and part.
-    pub fn notes(&self) -> impl Iterator<Item = (&Track, &Part, &Note)> {
-        self.tracks.iter().flat_map(|t| {
-            t.parts
-                .iter()
-                .flat_map(move |p| p.notes.iter().map(move |n| (t, p, n)))
-        })
-    }
-
-    /// An unused track id (one past the largest in use).
-    pub fn next_track_id(&self) -> TrackId {
-        TrackId(self.tracks.iter().map(|t| t.id.0 + 1).max().unwrap_or(1))
-    }
-
-    /// An unused part id.
-    pub fn next_part_id(&self) -> PartId {
-        let max = self
-            .tracks
-            .iter()
-            .flat_map(|t| &t.parts)
-            .map(|p| p.id.0 + 1);
-        PartId(max.max().unwrap_or(1))
-    }
-
-    /// An unused note id.
-    pub fn next_note_id(&self) -> NoteId {
-        NoteId(self.notes().map(|(_, _, n)| n.id.0 + 1).max().unwrap_or(1))
-    }
-
-    /// Puts the project in canonical form: sorted maps, parts and notes in
-    /// (start, id) order, curve points by tick, empty curves removed.
-    /// Duplicate keys are left in place for [`Project::validate`] to report.
-    pub fn canonicalize(&mut self) {
-        self.tempo_map.sort_by_key(|p| p.tick);
-        self.time_sig_map.sort_by_key(|p| p.bar);
-        self.key_map.sort_by_key(|p| p.tick);
-        self.sections
-            .sort_by(|a, b| (a.start, &a.name).cmp(&(b.start, &b.name)));
-        for track in &mut self.tracks {
-            track.parts.sort_by_key(|p| (p.start, p.id));
-            for part in &mut track.parts {
-                part.notes.sort_by_key(|n| (n.start, n.id));
-            }
-            track.curves.retain(|_, c| !c.is_empty());
-            for curve in track.curves.values_mut() {
-                curve.model_prediction.points.sort_by_key(|p| p.0);
-                curve.user_delta.points.sort_by_key(|p| p.0);
-            }
-        }
-    }
-
-    /// Checks every invariant ops rely on. Errors make the project unusable;
-    /// warnings are informational.
-    pub fn validate(&self) -> Vec<Diagnostic> {
-        let mut out = Vec::new();
-        let mut err = |code: &str, msg: String, target: Option<EntityRef>| {
-            out.push(Diagnostic::error(code, msg, target));
-        };
-
-        match self.tempo_map.first() {
-            Some(p) if p.tick == 0 => {}
-            _ => err(
-                "tempo.missing_start",
-                "the tempo map must have a point at tick 0".into(),
-                Some(EntityRef::TempoMap),
-            ),
-        }
-        if !strictly_increasing(self.tempo_map.iter().map(|p| p.tick)) {
-            err(
-                "tempo.unsorted",
-                "tempo points must have strictly increasing ticks".into(),
-                Some(EntityRef::TempoMap),
-            );
-        }
-        for p in &self.tempo_map {
-            if !valid_bpm(p.bpm) {
-                err(
-                    "tempo.invalid_bpm",
-                    format!(
-                        "tempo {} at tick {} is outside {MIN_BPM}..={MAX_BPM}",
-                        p.bpm, p.tick
-                    ),
-                    Some(EntityRef::TempoMap),
-                );
-            }
-        }
-        match self.time_sig_map.first() {
-            Some(p) if p.bar == 0 => {}
-            _ => err(
-                "time_sig.missing_start",
-                "the time-signature map must have a point at bar 0".into(),
-                Some(EntityRef::TimeSigMap),
-            ),
-        }
-        if !strictly_increasing(self.time_sig_map.iter().map(|p| i64::from(p.bar))) {
-            err(
-                "time_sig.unsorted",
-                "time signatures must have strictly increasing bars".into(),
-                Some(EntityRef::TimeSigMap),
-            );
-        }
-        for p in &self.time_sig_map {
-            if !valid_time_sig(p.numerator, p.denominator) {
-                err(
-                    "time_sig.invalid",
-                    format!(
-                        "{}/{} at bar {} is not a valid time signature",
-                        p.numerator, p.denominator, p.bar
-                    ),
-                    Some(EntityRef::TimeSigMap),
-                );
-            }
-        }
-        if !strictly_increasing(self.key_map.iter().map(|p| p.tick)) {
-            err(
-                "key.unsorted",
-                "key changes must have strictly increasing ticks".into(),
-                Some(EntityRef::KeyMap),
-            );
-        }
-        for p in &self.key_map {
-            if p.tonic > 11 || p.tick < 0 {
-                err(
-                    "key.invalid",
-                    format!(
-                        "key at tick {} has tonic {} (expected 0..=11) or a negative tick",
-                        p.tick, p.tonic
-                    ),
-                    Some(EntityRef::KeyMap),
-                );
-            }
-        }
-
-        let mut names = BTreeSet::new();
-        for sec in &self.sections {
-            if !names.insert(sec.name.as_str()) || sec.start < 0 || sec.end <= sec.start {
-                err(
-                    "section.invalid",
-                    format!(
-                        "section `{}` is duplicated or has an empty or negative range",
-                        sec.name
-                    ),
-                    None,
-                );
-            }
-        }
-        if !sorted_by(self.sections.iter().map(|s| (s.start, s.name.clone()))) {
-            err(
-                "section.unsorted",
-                "sections must be sorted by start".into(),
-                None,
-            );
-        }
-
-        let mut track_ids = BTreeSet::new();
-        let mut part_ids = BTreeSet::new();
-        let mut note_ids = BTreeSet::new();
-        for t in &self.tracks {
-            if !track_ids.insert(t.id) {
-                err(
-                    "track.duplicate_id",
-                    format!("{} is used twice", t.id),
-                    Some(EntityRef::Track { id: t.id }),
-                );
-            }
-            for issue in validate_track_settings(t) {
-                err("track.invalid", issue, Some(EntityRef::Track { id: t.id }));
-            }
-            for (param, curve) in &t.curves {
-                let target = Some(EntityRef::Curve {
-                    track: t.id,
-                    param: param.clone(),
-                });
-                if param.descriptor().is_none() {
-                    err(
-                        "curve.unknown_param",
-                        format!("unknown parameter `{param}`"),
-                        target.clone(),
-                    );
-                }
-                for c in [&curve.model_prediction, &curve.user_delta] {
-                    if !strictly_increasing(c.points.iter().map(|p| p.0)) {
-                        err(
-                            "curve.unsorted",
-                            format!("`{param}` points must have strictly increasing ticks"),
-                            target.clone(),
-                        );
-                    }
-                    if c.points.iter().any(|p| !p.1.is_finite()) {
-                        err(
-                            "curve.non_finite",
-                            format!("`{param}` has a non-finite value"),
-                            target.clone(),
-                        );
-                    }
-                }
-            }
-            if !sorted_by(t.parts.iter().map(|p| (p.start, p.id))) {
-                err(
-                    "part.unsorted",
-                    format!("parts of {} are not in (start, id) order", t.id),
-                    Some(EntityRef::Track { id: t.id }),
-                );
-            }
-            for p in &t.parts {
-                if !part_ids.insert(p.id) {
-                    err(
-                        "part.duplicate_id",
-                        format!("{} is used twice", p.id),
-                        Some(EntityRef::Part { id: p.id }),
-                    );
-                }
-                if p.length < 1 || p.start < 0 {
-                    err(
-                        "part.invalid",
-                        format!(
-                            "{} has start {} and length {} (start ≥ 0, length ≥ 1)",
-                            p.id, p.start, p.length
-                        ),
-                        Some(EntityRef::Part { id: p.id }),
-                    );
-                }
-                if !sorted_by(p.notes.iter().map(|n| (n.start, n.id))) {
-                    err(
-                        "note.unsorted",
-                        format!("notes of {} are not in (start, id) order", p.id),
-                        Some(EntityRef::Part { id: p.id }),
-                    );
-                }
-                for n in &p.notes {
-                    if !note_ids.insert(n.id) {
-                        err(
-                            "note.duplicate_id",
-                            format!("{} is used twice", n.id),
-                            Some(EntityRef::Note { id: n.id }),
-                        );
-                    }
-                    if let Some(issue) = validate_note(n) {
-                        err("note.invalid", issue, Some(EntityRef::Note { id: n.id }));
-                    }
-                }
-            }
-        }
-        for (phrase, lane) in &self.takes {
-            let ids: BTreeSet<_> = lane.takes.iter().map(|t| t.id).collect();
-            if ids.len() != lane.takes.len() {
-                err(
-                    "take.duplicate_id",
-                    format!("{phrase} has duplicate take ids"),
-                    Some(EntityRef::Phrase { id: *phrase }),
-                );
-            }
-            if let Some(sel) = lane.selected
-                && !lane.takes.iter().any(|t| t.id == sel)
-            {
-                err(
-                    "take.not_found",
-                    format!("{phrase} selects missing {sel}"),
-                    Some(EntityRef::Phrase { id: *phrase }),
-                );
-            }
-        }
-        out
-    }
-}
-
-/// Lowest accepted tempo.
-pub const MIN_BPM: f64 = 1.0;
-/// Highest accepted tempo.
-pub const MAX_BPM: f64 = 1000.0;
-
-pub(crate) fn valid_bpm(bpm: f64) -> bool {
-    (MIN_BPM..=MAX_BPM).contains(&bpm)
-}
-
-pub(crate) fn valid_time_sig(numerator: u8, denominator: u8) -> bool {
-    numerator >= 1 && denominator.is_power_of_two() && denominator <= 64
-}
-
-/// Returns a message if a note's own fields are invalid.
-pub(crate) fn validate_note(n: &Note) -> Option<String> {
-    if n.start < 0 {
-        return Some(format!(
-            "{} starts before its part (start {})",
-            n.id, n.start
-        ));
-    }
-    if n.length < 1 {
-        return Some(format!("{} has length {}", n.id, n.length));
-    }
-    if !(0.0..=12_800.0).contains(&n.pitch_cents) {
-        return Some(format!(
-            "{} has pitch {} cents, outside 0..=12800",
-            n.id, n.pitch_cents
-        ));
-    }
-    if !expr_finite(&n.expr) {
-        return Some(format!("{} has a non-finite expression value", n.id));
-    }
-    if let Some(ph) = &n.phonemes
-        && ph.iter().any(|p| {
-            p.symbol.is_empty()
-                || !p.offset_ms.is_none_or(f64::is_finite)
-                || !p.length_ms.is_none_or(|l| l.is_finite() && l >= 0.0)
-        })
-    {
-        return Some(format!(
-            "{} has an empty phoneme or invalid phoneme timing",
-            n.id
-        ));
-    }
-    let modes = [&n.modes.pitch, &n.modes.timbre, &n.modes.pronunciation];
-    if modes.iter().any(|m| m.values().any(|w| !w.is_finite())) {
-        return Some(format!("{} has a non-finite vocal mode weight", n.id));
-    }
-    None
-}
-
-fn expr_finite(e: &NoteExpr) -> bool {
-    let vib = e.vibrato.as_ref().is_none_or(|v| {
-        [
-            v.depth_cents,
-            v.rate_hz,
-            v.start,
-            v.fade_in,
-            v.fade_out,
-            v.phase,
-            v.drift,
-        ]
-        .iter()
-        .all(|x| x.is_finite())
-    });
-    let p = &e.portamento;
-    let port = p.length_ms.is_none_or(f64::is_finite)
-        && [p.before, p.overshoot_cents, p.preparation_cents]
-            .iter()
-            .all(|x| x.is_finite());
-    let env = [&e.attack, &e.release].iter().all(|x| {
-        x.as_ref()
-            .is_none_or(|v| v.length_ms.is_finite() && v.strength.is_finite())
-    });
-    vib && port && env
-}
-
-/// Returns a message for each invalid track-level setting.
-pub(crate) fn validate_track_settings(t: &Track) -> Vec<String> {
-    let mut out = Vec::new();
-    if !t.mix.gain_db.is_finite() || !(-1.0..=1.0).contains(&t.mix.pan) {
-        out.push(format!("{} has invalid mix settings", t.id));
-    }
-    let d = &t.doubling;
-    if !(1..=16).contains(&d.layers)
-        || !(0.0..=1.0).contains(&d.spacing)
-        || !(0.0..=100.0).contains(&d.detune_cents)
-        || !(0.0..=100.0).contains(&d.jitter_ms)
-        || !(0.0..=1.0).contains(&d.timbre)
-    {
-        out.push(format!(
-            "{} has invalid doubling (layers 1..=16, spacing and timbre 0..=1, \
-             detune_cents and jitter_ms 0..=100)",
-            t.id
-        ));
-    }
-    if t.voice_mix.iter().any(|v| !(0.0..=1.0).contains(&v.weight)) {
-        out.push(format!("{} has a voice-mix weight outside 0..=1", t.id));
-    }
-    for (i, e) in t.effects.iter().enumerate() {
-        for issue in e.issues() {
-            out.push(format!("{} effect {i}: {issue}", t.id));
-        }
-    }
-    out
-}
-
-fn strictly_increasing(it: impl Iterator<Item = i64>) -> bool {
-    let mut prev = None;
-    for x in it {
-        if prev.is_some_and(|p| p >= x) {
-            return false;
-        }
-        prev = Some(x);
-    }
-    true
-}
-
-fn sorted_by<K: Ord>(it: impl Iterator<Item = K>) -> bool {
-    let mut prev: Option<K> = None;
-    for k in it {
-        if prev.as_ref().is_some_and(|p| *p > k) {
-            return false;
-        }
-        prev = Some(k);
-    }
-    true
+    /// Monotone cubic: smooth and never overshoots the points.
+    Smooth,
 }

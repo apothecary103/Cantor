@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cantor</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <span class="brand">Cantor</span>
+  <nav id="menubar"></nav>
+  <div id="transport"></div>
+  <button id="connect-btn" class="btn">Connect</button>
+</header>
+<div id="main">
+  <aside id="tracks" class="panel"></aside>
+  <section id="editor">
+    <div id="toolbar" class="bar"></div>
+    <div id="roll-wrap" class="canvas-wrap"><canvas id="roll"></canvas></div>
+    <div id="splitter"></div>
+    <div id="lane-tabs" class="bar"></div>
+    <div id="lane-wrap" class="canvas-wrap"><canvas id="lane"></canvas></div>
+  </section>
+  <aside id="props" class="panel"></aside>
+</div>
+<footer id="status"></footer>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 [package]
 name = "cantor-io"
-description = "Cantor file formats: .cantor projects, USTX, MIDI and MusicXML import"
+description = "Cantor file formats: .cantor projects; MIDI, UST, USTX and MusicXML import; UST/USTX/WAV export; lyrics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,9 +11,9 @@ publish.workspace = true
 cantor-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-schemars.workspace = true
 thiserror.workspace = true
-zstd.workspace = true
+encoding_rs.workspace = true
+hound.workspace = true
 midly.workspace = true
 quick-xml.workspace = true
 serde-saphyr.workspace = true

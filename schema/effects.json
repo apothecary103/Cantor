@@ -251,5 +251,39 @@
         "description": "Wet share of the output; 0 is dry."
       }
     ]
+  },
+  {
+    "kind": "delay",
+    "name": "Delay",
+    "description": "Feedback echo.",
+    "params": [
+      {
+        "id": "time_ms",
+        "name": "Time",
+        "unit": "ms",
+        "min": 1.0,
+        "max": 2000.0,
+        "default": 375.0,
+        "description": "Delay between repeats."
+      },
+      {
+        "id": "feedback",
+        "name": "Feedback",
+        "unit": "ratio",
+        "min": 0.0,
+        "max": 0.95,
+        "default": 0.3,
+        "description": "Share of each repeat fed back into the next."
+      },
+      {
+        "id": "mix",
+        "name": "Mix",
+        "unit": "ratio",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 0.2,
+        "description": "Wet share of the output; 0 is dry."
+      }
+    ]
   }
 ]
