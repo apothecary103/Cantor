@@ -1,70 +1,69 @@
 # Cantor
 
-Cantor is an open-source singing voice synthesis workstation written in Rust:
-a headless engine with four equal clients — a GPUI desktop app, a Python
-package, a CLI, and an MCP server for AI agents. Targets: macOS 14+ and
-Linux (Wayland/X11, PipeWire). Windows is out of scope for v1 but nothing
-may preclude it.
+Cantor is an open-source UTAU-style singing synthesis workstation in Rust:
+one `cantor` binary with a web editor, a JSON API, an MCP server and a CLI.
+Synthesis is concatenative from UTAU voicebanks (oto.ini) through a built-in
+PSOLA resampler. No neural models, no AI features inside the product.
+Targets macOS 14+ and Linux; nothing may preclude Windows.
 
-## Where things are explained
-Read the spec file that matches the work; you don't need all of them.
-- docs/spec/00-vision.md       why the product exists, the principles
-- docs/spec/10-stack.md        locked dependencies, toolchain, dev environment
-- docs/spec/20-architecture.md crates, threads, data flow
-- docs/spec/30-data-model.md   the document model as Rust types
-- docs/spec/40-algorithms.md   synthesis pipeline and formulas
-- docs/spec/50-ux.md           manual editing UX and visual design
-- docs/spec/60-api.md          Python, CLI, JSON-RPC and MCP surfaces
-- docs/spec/70-milestones.md   milestones and their "done when" criteria
-- docs/spec/80-research.md     background on models, vocoders, competitors
-PROGRESS.md is the live checklist for the current milestone. Keep it current.
-Non-obvious decisions go in docs/decisions/, one short file each.
+The main use: an AI agent gets a song (MIDI and/or audio + lyrics) and
+produces a finished, well-tuned UTAU cover; a person polishes it in the
+browser.
+
+## Read first
+- docs/design.md      the contract: crates, model, ops, API, MCP, UI
+- docs/tuning.md      UTAU semantics and the tuning craft (with numbers)
+- docs/agent-guide.md how an agent makes a cover with Cantor (served to
+                      agents as the MCP resource `cantor://guide`)
+- PROGRESS.md         live checklist; keep it current
+- docs/decisions/     one short file per non-obvious decision
+
+## Layout
+```
+crates/cantor-core      model, Op/apply/undo, tempo, params, pitch curve, tuner
+crates/cantor-synth     voicebanks, phonemizers, resampler, render, cache, fx
+crates/cantor-analysis  YIN F0, transcription, loudness, render reports
+crates/cantor-io        MIDI/UST/USTX/MusicXML/lyrics import, UST/USTX/WAV export
+crates/cantor           the binary: engine, HTTP API, MCP, CLI; embeds web/
+crates/cantor-fixtures  generated CC0 test voicebank
+web/                    static editor (HTML/CSS/ES modules, no build step)
+```
 
 ## Commands
-The dev environment is a Nix flake. Enter it with `direnv allow` (once) or
-`nix develop`. All commands below run inside it.
+Dev environment is a Nix flake: `direnv allow` once, or `nix develop`.
 - `cargo xtask ci`     fmt check, clippy -D warnings, all tests (the gate)
-- `cargo xtask miri`   Miri on crates with unsafe code
-- `cargo xtask tsan`   ThreadSanitizer run for the audio and engine threads
-- `cargo xtask schema` regenerate JSON Schemas from Rust types
-- `cargo xtask app`    run the desktop app
-- `cargo xtask bench`  render + UI benchmarks
-- `nix flake check`    validate the flake
+- `cargo xtask schema` regenerate schema/ from Rust types
+- `cargo xtask serve`  run `cantor serve` (web UI at http://127.0.0.1:7878)
+- `cargo run -p cantor -- <subcommand>`  CLI; `cantor mcp` is stdio MCP
+- Web UI without a server: `python3 -m http.server -d web` and open
+  `/?mock` (in-browser fake API, for UI work)
 
-## Gotchas
-- Every edit to a project is an `Op` applied through `cantor-core`.
-  The GUI, Python, CLI and MCP never mutate the document directly.
-  A capability only the GUI has is a bug.
-- The GUI depends on `gpui-kit` only. Never add gpui, gpui-pre or gpui-ce
-  directly; gpui-kit pins the matching GPUI.
-- Upstream GPUI has no custom shaders. Draw with quads and paths; render
-  waveforms and spectrograms to textures off the UI thread.
-- macOS dev builds use GPUI's runtime shaders, because Xcode's Metal compiler
-  isn't available in the Nix shell. The app crate has a default
-  `runtime-shaders` feature forwarding to gpui-kit's runtime-shader feature
-  (look up its exact name in the pinned gpui-kit). Release builds for macOS
-  run outside Nix with full Xcode, using `--no-default-features` so shaders
-  are precompiled.
-- The audio callback never allocates, locks, logs or blocks. Talk to it
-  through `rtrb` ring buffers and atomically swapped `Arc` buffers.
-- ort is pinned to an exact release candidate and uses the `load-dynamic`
-  feature with ORT_DYLIB_PATH from the flake, not ort's binary download.
-  If nixpkgs' onnxruntime is older than the pinned ort requires, or lacks
-  the CoreML execution provider on macOS, fetch the official ONNX Runtime
-  release in flake.nix instead and record the decision.
-- Tools come from flake.nix. Don't install tools with brew, rustup or pip;
-  add them to the flake instead.
-- The toolchain is a pinned nightly. fenix reads it from rust-toolchain.toml,
-  so change the date only there, and then update the `sha256` in flake.nix
-  (set it to `lib.fakeSha256`, run `nix develop`, paste the reported hash).
-  Don't change the date as a side effect of other work.
-- Use only the unstable features on the allow-list in docs/spec/10-stack.md.
-  `cantor-plugin-sdk` must compile on stable Rust; no unstable features there.
-- The realtime mixer and anything with `unsafe` must pass `cargo xtask miri`
-  where Miri supports it, and `cargo xtask tsan`.
-- Rendering is deterministic: same document + same seeds = identical
-  audio hash. Diffusion noise uses the per-phrase seed stored in the project.
-- JSON Schemas in `schema/` are generated from Rust types with `schemars`.
-  Don't hand-edit them; run `cargo xtask schema`.
-- Unsupported parameters return a diagnostic. Never drop an edit silently.
-- Model weights are never committed. Tests download fixtures by checksum.
+## Rules
+- Every edit is an `Op` applied through `cantor-core`. The web UI, CLI and
+  MCP never mutate the project directly. A capability only the UI has is a
+  bug; so is one only MCP has.
+- The UI and API must agree: the pitch line the UI draws comes from
+  `cantor_core::pitch`, the same code the renderer uses.
+- Tuner passes (`cantor_core::tune`) emit ordinary ops in one batch, are
+  idempotent, and respect their range. Their rules live in docs/tuning.md;
+  change both together.
+- Deterministic: same project + voicebank = identical audio hash, also
+  across thread counts. Randomness is seeded from note ids.
+- Honest failure: unknown params, missing aliases, unsupported flags and
+  unconvertible import data produce diagnostics. Never drop an edit
+  silently.
+- No neural models, ONNX, or downloads at runtime. Voicebanks are never
+  committed; tests use the generated CC0 bank in cantor-fixtures.
+- Keep it small. Prefer deleting code to adding options. No new crate,
+  dependency or UI panel without a reason in docs/decisions/.
+- web/ has no build step and no third-party JS. Keep the visual language:
+  flat, dense, dark-first, one pink accent (see design.md "Web UI").
+- JSON Schemas in `schema/` are generated (`cargo xtask schema`); don't
+  hand-edit them.
+- Tools come from flake.nix; don't install with brew/rustup/pip.
+- The toolchain is a pinned nightly in rust-toolchain.toml. Change the date
+  only there, then update the fenix `sha256` in flake.nix (set
+  `lib.fakeSha256`, run `nix develop`, paste the reported hash). Never
+  change it as a side effect of other work.
+- `target/` may be a symlink to an external volume; if it's dangling, set
+  `CARGO_TARGET_DIR`.

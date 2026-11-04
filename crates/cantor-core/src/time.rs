@@ -102,7 +102,7 @@ impl TimeSigMap {
                 Some(&(bar, tick, len)) => tick + Tick::from(p.bar - bar) * len,
                 None => 0,
             };
-            segs.push((p.bar, start, bar_ticks(p.numerator, p.denominator)));
+            segs.push((p.bar, start, bar_ticks(p.num, p.den)));
         }
         Self { segs }
     }
@@ -125,9 +125,9 @@ impl TimeSigMap {
     }
 }
 
-/// Ticks in one bar of `numerator`/`denominator`.
-pub fn bar_ticks(numerator: u8, denominator: u8) -> Tick {
-    Tick::from(numerator) * Tick::from(PPQ) * 4 / Tick::from(denominator)
+/// Ticks in one bar of `num`/`den`.
+pub fn bar_ticks(num: u8, den: u8) -> Tick {
+    Tick::from(num) * Tick::from(PPQ) * 4 / Tick::from(den)
 }
 
 #[cfg(test)]
@@ -167,13 +167,13 @@ mod tests {
         let m = TimeSigMap::new(&[
             TimeSigPoint {
                 bar: 0,
-                numerator: 4,
-                denominator: 4,
+                num: 4,
+                den: 4,
             },
             TimeSigPoint {
                 bar: 2,
-                numerator: 3,
-                denominator: 8,
+                num: 3,
+                den: 8,
             },
         ]);
         let q = Tick::from(PPQ);
@@ -233,11 +233,11 @@ mod tests {
             sigs in prop::collection::vec((1u32..=8, 1u8..=15, prop::sample::select(vec![1u8, 2, 4, 8, 16, 32])), 0..8),
             bar in 0u32..=500,
         ) {
-            let mut pts = vec![TimeSigPoint { bar: 0, numerator: 4, denominator: 4 }];
+            let mut pts = vec![TimeSigPoint { bar: 0, num: 4, den: 4 }];
             let mut b = 0;
-            for (gap, numerator, denominator) in sigs {
+            for (gap, num, den) in sigs {
                 b += gap;
-                pts.push(TimeSigPoint { bar: b, numerator, denominator });
+                pts.push(TimeSigPoint { bar: b, num, den });
             }
             let m = TimeSigMap::new(&pts);
             prop_assert_eq!(m.tick_to_bar(m.bar_to_tick(bar)), (bar, 0));

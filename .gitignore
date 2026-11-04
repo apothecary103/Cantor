@@ -22,33 +22,8 @@ flamegraph.svg
 result
 result-*
 
-# Python (cantor-py, maturin) 
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.egg-info/
-/crates/cantor-py/python/cantor/*.so
-/crates/cantor-py/python/cantor/*.pyd
-/dist/wheels/
-
-# WebAssembly plugins 
-*.wasm
-!crates/cantor-phon/tests/fixtures/**/*.wasm
-
-# Models, voicebanks, downloaded fixtures 
-# Weights are never committed; tests download them by checksum.
-*.onnx
-*.ort
-*.pt
-*.ckpt
-*.safetensors
-*.metallib
-/tests/fixtures/downloaded
-/voicebanks/
+# Voicebanks (never committed; tests generate a CC0 one) 
+/voicebanks
 
 # Runtime data and renders 
 /.cantor-cache/
@@ -89,3 +64,4 @@ CLAUDE.local.md
 # Agent worktrees
 /.claude/worktrees/
 .envrc.local
+/tests/fixtures/downloaded

@@ -1,158 +1,186 @@
-//! The undo tree. Undoing and then making a new edit starts a branch; the
-//! old branch is kept and can be checked out again.
+//! [`Document`]: a project with linear undo/redo and named checkpoints.
+//! All edits go through [`Document::apply`].
 
+use crate::apply::{apply, apply_checked};
+use crate::diag::{Diagnostic, Rejected};
 use crate::ids::Revision;
+use crate::model::Project;
 use crate::op::Op;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Identifies a node in the undo tree. The root is node 0.
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
-)]
-#[serde(transparent)]
-pub struct HistoryNodeId(pub u32);
-
-impl HistoryNodeId {
-    /// The root: the document as it was opened.
-    pub const ROOT: Self = Self(0);
-}
-
-/// One edit in the undo tree.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct HistoryNode {
-    /// This node.
-    pub id: HistoryNodeId,
-    /// The state this edit was applied to; `None` for the root.
-    pub parent: Option<HistoryNodeId>,
-    /// Edits made from this state, oldest first. More than one is a branch.
-    pub children: Vec<HistoryNodeId>,
-    /// The child redo follows: the most recently visited branch.
-    pub redo_child: Option<HistoryNodeId>,
-    /// Name shown in the history panel.
+/// One undo or redo step: the op that performs it and its label.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Step {
+    /// What the user did, e.g. "Move notes".
     pub label: String,
-    /// The edit; `None` for the root.
-    pub op: Option<Op>,
-    /// Restores the parent state; `None` for the root.
-    pub inverse: Option<Op>,
-    /// The revision at which this edit was first applied.
-    pub revision: Revision,
+    /// The op that undoes (on the undo stack) or redoes (on the redo
+    /// stack) it.
+    pub op: Op,
 }
 
-/// The undo tree and the current position in it.
+/// The result of an edit, undo, redo or restore.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct History {
-    nodes: Vec<HistoryNode>,
-    current: HistoryNodeId,
+pub struct Applied {
+    /// The document revision afterwards.
+    pub revision: Revision,
+    /// The label of the step.
+    pub label: String,
+    /// Warnings about the new state.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
-impl Default for History {
-    fn default() -> Self {
-        Self::new()
-    }
+/// A project being edited.
+#[derive(Clone, Debug)]
+pub struct Document {
+    project: Project,
+    undo: Vec<Step>,
+    redo: Vec<Step>,
+    checkpoints: Vec<(String, Project)>,
+    revision: Revision,
+    saved: Revision,
 }
 
-impl History {
-    /// A tree holding only the root.
-    pub fn new() -> Self {
+impl Document {
+    /// Opens a project (canonicalizing it) with empty history. Check
+    /// [`Project::validate`] first: ops refuse to recreate invalid notes.
+    pub fn new(mut project: Project) -> Self {
+        project.canonicalize();
         Self {
-            nodes: vec![HistoryNode {
-                id: HistoryNodeId::ROOT,
-                parent: None,
-                children: Vec::new(),
-                redo_child: None,
-                label: "Open".into(),
-                op: None,
-                inverse: None,
-                revision: Revision(0),
-            }],
-            current: HistoryNodeId::ROOT,
+            project,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            checkpoints: Vec::new(),
+            revision: Revision(0),
+            saved: Revision(0),
         }
     }
 
-    /// The node for the current state.
-    pub fn current(&self) -> HistoryNodeId {
-        self.current
+    /// The current project.
+    pub fn project(&self) -> &Project {
+        &self.project
     }
 
-    /// Looks up a node.
-    pub fn node(&self, id: HistoryNodeId) -> Option<&HistoryNode> {
-        self.nodes.get(id.0 as usize)
+    /// The current revision; it increases on every change.
+    pub fn revision(&self) -> Revision {
+        self.revision
     }
 
-    /// All nodes, in creation order.
-    pub fn nodes(&self) -> &[HistoryNode] {
-        &self.nodes
-    }
-
-    /// Whether there is an edit to undo.
-    pub fn can_undo(&self) -> bool {
-        self.current != HistoryNodeId::ROOT
-    }
-
-    /// The child redo would follow, if any.
-    pub fn redo_target(&self) -> Option<HistoryNodeId> {
-        let n = &self.nodes[self.current.0 as usize];
-        n.redo_child.or_else(|| n.children.last().copied())
-    }
-
-    /// Records an applied edit as a new child of the current node and moves
-    /// to it.
-    pub(crate) fn push(&mut self, op: Op, inverse: Op, revision: Revision) -> HistoryNodeId {
-        let id = HistoryNodeId(u32::try_from(self.nodes.len()).expect("fewer than 2^32 edits"));
-        let parent = self.current;
-        self.nodes.push(HistoryNode {
-            id,
-            parent: Some(parent),
-            children: Vec::new(),
-            redo_child: None,
-            label: op.label(),
-            op: Some(op),
-            inverse: Some(inverse),
-            revision,
+    /// Applies an op as one undo step and clears the redo stack.
+    pub fn apply(&mut self, op: Op) -> Result<Applied, Rejected> {
+        let label = op.label();
+        let r = apply(&mut self.project, &op)?;
+        self.undo.push(Step {
+            label: label.clone(),
+            op: r.inverse,
         });
-        let p = &mut self.nodes[parent.0 as usize];
-        p.children.push(id);
-        p.redo_child = Some(id);
-        self.current = id;
-        id
+        self.redo.clear();
+        Ok(self.bump(label, r.diagnostics))
     }
 
-    /// Moves to the parent after its inverse was applied.
-    pub(crate) fn step_up(&mut self) {
-        let cur = self.current;
-        let parent = self.nodes[cur.0 as usize].parent.expect("not at root");
-        self.nodes[parent.0 as usize].redo_child = Some(cur);
-        self.current = parent;
+    /// Undoes the last step. `Ok(None)` when there is nothing to undo.
+    pub fn undo(&mut self) -> Result<Option<Applied>, Rejected> {
+        Self::step(&mut self.project, &mut self.undo, &mut self.redo)
+            .map(|s| s.map(|(label, d)| self.bump(label, d)))
     }
 
-    /// Moves to a child after its op was re-applied.
-    pub(crate) fn step_down(&mut self, child: HistoryNodeId) {
-        debug_assert_eq!(self.nodes[child.0 as usize].parent, Some(self.current));
-        self.nodes[self.current.0 as usize].redo_child = Some(child);
-        self.current = child;
+    /// Redoes the last undone step. `Ok(None)` when there is nothing to redo.
+    pub fn redo(&mut self) -> Result<Option<Applied>, Rejected> {
+        Self::step(&mut self.project, &mut self.redo, &mut self.undo)
+            .map(|s| s.map(|(label, d)| self.bump(label, d)))
     }
 
-    /// The path from the current node to `target`: how many steps up to
-    /// the common ancestor, then the nodes to step down through.
-    pub(crate) fn path_to(&self, target: HistoryNodeId) -> (usize, Vec<HistoryNodeId>) {
-        let ancestors = |mut n: HistoryNodeId| {
-            let mut v = vec![n];
-            while let Some(p) = self.nodes[n.0 as usize].parent {
-                v.push(p);
-                n = p;
-            }
-            v
+    /// Pops a step from `from`, applies it and pushes its inverse to `to`.
+    fn step(
+        project: &mut Project,
+        from: &mut Vec<Step>,
+        to: &mut Vec<Step>,
+    ) -> Result<Option<(String, Vec<Diagnostic>)>, Rejected> {
+        let Some(step) = from.last() else {
+            return Ok(None);
         };
-        let from = ancestors(self.current);
-        let to = ancestors(target);
-        let lca = *from
+        let r = apply_checked(project, &step.op, false)?;
+        let label = from.pop().expect("non-empty").label;
+        to.push(Step {
+            label: label.clone(),
+            op: r.inverse,
+        });
+        Ok(Some((label, r.diagnostics)))
+    }
+
+    fn bump(&mut self, label: String, diagnostics: Vec<Diagnostic>) -> Applied {
+        self.revision.0 += 1;
+        Applied {
+            revision: self.revision,
+            label,
+            diagnostics,
+        }
+    }
+
+    /// Whether there is a step to undo.
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    /// Whether there is a step to redo.
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// Labels of the undo stack, oldest first.
+    pub fn undo_labels(&self) -> impl Iterator<Item = &str> {
+        self.undo.iter().map(|s| s.label.as_str())
+    }
+
+    /// Labels of the redo stack, next redo last.
+    pub fn redo_labels(&self) -> impl Iterator<Item = &str> {
+        self.redo.iter().map(|s| s.label.as_str())
+    }
+
+    /// Saves a snapshot of the current project under `name`, replacing any
+    /// checkpoint of that name.
+    pub fn checkpoint(&mut self, name: impl Into<String>) {
+        let name = name.into();
+        self.checkpoints.retain(|(n, _)| *n != name);
+        self.checkpoints.push((name, self.project.clone()));
+    }
+
+    /// Checkpoint names, oldest first.
+    pub fn checkpoints(&self) -> impl Iterator<Item = &str> {
+        self.checkpoints.iter().map(|(n, _)| n.as_str())
+    }
+
+    /// Returns to a checkpoint as one undoable step.
+    pub fn restore(&mut self, name: &str) -> Result<Applied, Rejected> {
+        let snapshot = self
+            .checkpoints
             .iter()
-            .find(|n| to.contains(n))
-            .expect("the root is a common ancestor");
-        let ups = from.iter().position(|n| *n == lca).expect("lca on path");
-        let mut downs: Vec<_> = to.into_iter().take_while(|n| *n != lca).collect();
-        downs.reverse();
-        (ups, downs)
+            .find(|(n, _)| n == name)
+            .map(|(_, p)| p)
+            .ok_or_else(|| {
+                Rejected::from(Diagnostic::error(
+                    "checkpoint.not_found",
+                    format!("no checkpoint `{name}`"),
+                ))
+            })?;
+        let ops = Op::transition(&self.project, snapshot);
+        self.apply(Op::batch(format!("Restore `{name}`"), ops))
+    }
+
+    /// Replaces the whole project as one undoable step (e.g. an import).
+    pub fn replace(&mut self, mut project: Project, label: &str) -> Result<Applied, Rejected> {
+        project.canonicalize();
+        let ops = Op::transition(&self.project, &project);
+        self.apply(Op::batch(label, ops))
+    }
+
+    /// Records that the current state was saved.
+    pub fn mark_saved(&mut self) {
+        self.saved = self.revision;
+    }
+
+    /// Whether anything changed since the last save (or since opening).
+    pub fn is_dirty(&self) -> bool {
+        self.saved != self.revision
     }
 }

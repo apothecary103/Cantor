@@ -299,6 +299,36 @@ const REVERB: &[EffectParam] = &[
     ),
 ];
 
+const DELAY: &[EffectParam] = &[
+    p!(
+        "time_ms",
+        "Time",
+        "ms",
+        1.0,
+        2000.0,
+        375.0,
+        "Delay between repeats."
+    ),
+    p!(
+        "feedback",
+        "Feedback",
+        "ratio",
+        0.0,
+        0.95,
+        0.3,
+        "Share of each repeat fed back into the next."
+    ),
+    p!(
+        "mix",
+        "Mix",
+        "ratio",
+        0.0,
+        1.0,
+        0.2,
+        "Wet share of the output; 0 is dry."
+    ),
+];
+
 const REGISTRY: &[EffectDescriptor] = &[
     EffectDescriptor {
         kind: EffectKind::Eq,
@@ -323,6 +353,12 @@ const REGISTRY: &[EffectDescriptor] = &[
         name: "Reverb",
         description: "Room simulation with parallel combs and series all-passes.",
         params: REVERB,
+    },
+    EffectDescriptor {
+        kind: EffectKind::Delay,
+        name: "Delay",
+        description: "Feedback echo.",
+        params: DELAY,
     },
 ];
 

@@ -1,8 +1,8 @@
-//! Artifact detectors: clipping, discontinuities at phrase joins, crackle,
-//! unexpected silence and formant jumps.
+//! Artifact detectors: clipping, clicks where audio was joined, and
+//! silence inside sung notes (usually a missing or broken sample).
 
-use crate::TrackInput;
-use realfft::RealFftPlanner;
+use crate::rms_db;
+use cantor_core::TrackId;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -12,14 +12,10 @@ use serde::{Deserialize, Serialize};
 pub enum ArtifactKind {
     /// Samples at or beyond full scale.
     Clipping,
-    /// A jump in the waveform where phrase audio was joined.
+    /// A click (waveform jump) where note or phrase audio was joined.
     Discontinuity,
-    /// Short bursts of high-frequency energy.
-    Crackle,
     /// Silence where a sung note should sound.
     UnexpectedSilence,
-    /// An abrupt change of spectral envelope within a sung note.
-    FormantJump,
 }
 
 /// A detected artifact.
@@ -28,12 +24,13 @@ pub struct Artifact {
     /// Kind.
     pub kind: ArtifactKind,
     /// The track, or `None` for the mix.
-    pub track: Option<cantor_core::TrackId>,
+    pub track: Option<TrackId>,
     /// Time in seconds.
     pub at_sec: f64,
     /// Duration in seconds.
     pub duration_sec: f64,
-    /// Detector-specific magnitude (see `detail`).
+    /// Kind-specific magnitude: clipped samples, click strength (× the
+    /// local curvature), or silence length in seconds.
     pub magnitude: f64,
     /// Human-readable explanation.
     pub detail: String,
@@ -42,26 +39,41 @@ pub struct Artifact {
 /// Samples at or above this magnitude count as clipped.
 pub const CLIP_LEVEL: f32 = 0.999;
 
-/// Mix-level detectors (clipping).
-pub fn detect_mix(stereo: &[f32], sr: u32) -> Vec<Artifact> {
+/// Number of clipped samples (any channel) in interleaved audio.
+pub fn clipped_samples(samples: &[f32]) -> u64 {
+    samples.iter().filter(|s| s.abs() >= CLIP_LEVEL).count() as u64
+}
+
+/// Clipped stretches of interleaved audio, at most `limit` reported.
+pub fn clipping(samples: &[f32], channels: usize, sr: u32, limit: usize) -> Vec<Artifact> {
+    let ch = channels.max(1);
+    let frames = samples.len() / ch;
+    let clipped = |k: usize| {
+        samples[k * ch..(k + 1) * ch]
+            .iter()
+            .any(|s| s.abs() >= CLIP_LEVEL)
+    };
     let mut out = Vec::new();
-    let frames = stereo.len() / 2;
     let mut i = 0;
-    while i < frames {
-        let clipped =
-            |k: usize| stereo[2 * k].abs() >= CLIP_LEVEL || stereo[2 * k + 1].abs() >= CLIP_LEVEL;
+    while i < frames && out.len() < limit {
         if clipped(i) {
             let start = i;
-            while i < frames && clipped(i) {
+            // Runs separated by < 10 ms are one event.
+            let mut last = i;
+            while i < frames && (clipped(i) || i - last < (sr as usize / 100).max(1)) {
+                if clipped(i) {
+                    last = i;
+                }
                 i += 1;
             }
+            let n = (start..=last).filter(|&k| clipped(k)).count();
             out.push(Artifact {
                 kind: ArtifactKind::Clipping,
                 track: None,
                 at_sec: start as f64 / f64::from(sr),
-                duration_sec: (i - start) as f64 / f64::from(sr),
-                magnitude: (i - start) as f64,
-                detail: format!("{} clipped samples", i - start),
+                duration_sec: (last + 1 - start) as f64 / f64::from(sr),
+                magnitude: n as f64,
+                detail: format!("{n} clipped samples; lower track or master gain"),
             });
         }
         i += 1;
@@ -69,42 +81,26 @@ pub fn detect_mix(stereo: &[f32], sr: u32) -> Vec<Artifact> {
     out
 }
 
-/// Track-level detectors.
-pub fn detect_track(t: &TrackInput<'_>) -> Vec<Artifact> {
+/// Clicks at join times `joins` (seconds) in mono `samples`: a
+/// second-difference spike within ±2 ms of the join far above the
+/// signal's curvature in the surrounding ±20 ms, at an audible level.
+pub fn discontinuities(samples: &[f32], sr: u32, joins: &[f64], track: TrackId) -> Vec<Artifact> {
+    let srf = f64::from(sr);
+    let near = ((0.002 * srf) as usize).max(1);
+    let around = ((0.020 * srf) as usize).max(near + 2);
     let mut out = Vec::new();
-    out.extend(discontinuities(t));
-    out.extend(silence(t));
-    out.extend(spectral(t));
-    out
-}
-
-/// RMS of a sample range.
-fn rms(x: &[f32]) -> f64 {
-    if x.is_empty() {
-        return 0.0;
-    }
-    (x.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / x.len() as f64).sqrt()
-}
-
-/// Clicks at phrase joins: a second-difference spike within ±2 ms of the
-/// join that stands far above the signal's curvature in the surrounding
-/// ±20 ms, at an audible level (above −60 dBFS).
-fn discontinuities(t: &TrackInput<'_>) -> Vec<Artifact> {
-    let sr = f64::from(t.sample_rate);
-    let near = (0.002 * sr) as usize;
-    let around = (0.020 * sr) as usize;
-    let mut out = Vec::new();
-    for &j in &t.joins {
-        let c = (j * sr) as usize;
-        if c < around + 1 || c + around + 1 >= t.samples.len() {
+    for &j in joins {
+        if !(j.is_finite() && j >= 0.0) {
             continue;
         }
-        let local = &t.samples[c - around..c + around];
-        if rms(local) < 1e-3 {
+        let c = (j * srf) as usize;
+        if c < around + 1 || c + around + 1 >= samples.len() {
             continue;
         }
-        let d2 =
-            |k: usize| f64::from((t.samples[k + 1] - 2.0 * t.samples[k] + t.samples[k - 1]).abs());
+        if rms_db(&samples[c - around..c + around]) < -60.0 {
+            continue;
+        }
+        let d2 = |k: usize| f64::from((samples[k + 1] - 2.0 * samples[k] + samples[k - 1]).abs());
         let spike = (c - near..c + near).map(d2).fold(0.0, f64::max);
         let mut rest: Vec<f64> = (c - around..c - near)
             .chain(c + near..c + around)
@@ -112,16 +108,16 @@ fn discontinuities(t: &TrackInput<'_>) -> Vec<Artifact> {
             .collect();
         rest.sort_by(f64::total_cmp);
         let typical = rest[rest.len() * 99 / 100].max(1e-7);
-        if spike > 6.0 * typical {
+        let ratio = spike / typical;
+        if ratio > 6.0 && spike > 1e-3 {
             out.push(Artifact {
                 kind: ArtifactKind::Discontinuity,
-                track: Some(t.track),
+                track: Some(track),
                 at_sec: j,
                 duration_sec: 0.0,
-                magnitude: spike / typical,
+                magnitude: ratio,
                 detail: format!(
-                    "click at a phrase join: curvature {:.1}× the surrounding 99th percentile",
-                    spike / typical
+                    "click at a join: curvature {ratio:.1}× the surrounding 99th percentile"
                 ),
             });
         }
@@ -129,142 +125,48 @@ fn discontinuities(t: &TrackInput<'_>) -> Vec<Artifact> {
     out
 }
 
-/// Silent stretches (< −60 dBFS for ≥ 100 ms) inside sung notes' steady parts.
-fn silence(t: &TrackInput<'_>) -> Vec<Artifact> {
-    let sr = f64::from(t.sample_rate);
-    let hop = (0.010 * sr) as usize;
-    let threshold = 10f64.powf(-60.0 / 20.0);
+/// Silent stretches (< −60 dBFS for ≥ 100 ms) inside `[start, end)` spans
+/// (seconds) of mono `samples`, ignoring the spans' outer 80 ms.
+pub fn silences(samples: &[f32], sr: u32, spans: &[(f64, f64)], track: TrackId) -> Vec<Artifact> {
+    let srf = f64::from(sr);
+    let hop = ((0.010 * srf) as usize).max(1);
     let mut out = Vec::new();
-    for n in t.notes.iter().filter(|n| n.sung) {
-        let edge = 0.08f64.min((n.end_sec - n.start_sec) / 4.0);
-        let a = ((n.start_sec + edge) * sr) as usize;
-        let b = (((n.end_sec - edge) * sr) as usize).min(t.samples.len());
-        let mut run_start = None;
+    for &(s, e) in spans {
+        let edge = 0.08f64.min((e - s) / 4.0);
+        let a = (((s + edge) * srf).max(0.0) as usize).min(samples.len());
+        let b = (((e - edge) * srf).max(0.0) as usize).min(samples.len());
+        let mut run: Option<usize> = None;
         let mut k = a;
+        let flush = |from: usize, to: usize, out: &mut Vec<Artifact>| {
+            let dur = (to - from) as f64 / srf;
+            if dur >= 0.1 {
+                out.push(Artifact {
+                    kind: ArtifactKind::UnexpectedSilence,
+                    track: Some(track),
+                    at_sec: from as f64 / srf,
+                    duration_sec: dur,
+                    magnitude: dur,
+                    detail: format!(
+                        "{:.0} ms of silence inside a sung note (missing or empty sample?)",
+                        dur * 1000.0
+                    ),
+                });
+            }
+        };
         while k + hop <= b {
-            let quiet = rms(&t.samples[k..k + hop]) < threshold;
-            match (quiet, run_start) {
-                (true, None) => run_start = Some(k),
-                (false, Some(s)) => {
-                    push_silence(&mut out, t, s, k, sr);
-                    run_start = None;
+            let quiet = rms_db(&samples[k..k + hop]) < -60.0;
+            match (quiet, run) {
+                (true, None) => run = Some(k),
+                (false, Some(r)) => {
+                    flush(r, k, &mut out);
+                    run = None;
                 }
                 _ => {}
             }
             k += hop;
         }
-        if let Some(s) = run_start {
-            push_silence(&mut out, t, s, k, sr);
-        }
-    }
-    out
-}
-
-fn push_silence(out: &mut Vec<Artifact>, t: &TrackInput<'_>, a: usize, b: usize, sr: f64) {
-    let dur = (b - a) as f64 / sr;
-    if dur >= 0.1 {
-        out.push(Artifact {
-            kind: ArtifactKind::UnexpectedSilence,
-            track: Some(t.track),
-            at_sec: a as f64 / sr,
-            duration_sec: dur,
-            magnitude: dur,
-            detail: format!("{:.0} ms of silence inside a sung note", dur * 1000.0),
-        });
-    }
-}
-
-/// Crackle (high-frequency energy spikes) and formant jumps (spectral
-/// envelope changes within voiced note bodies), from 2048-point spectra
-/// every 10 ms.
-fn spectral(t: &TrackInput<'_>) -> Vec<Artifact> {
-    let sr = f64::from(t.sample_rate);
-    let n_fft = 2048;
-    let hop = (0.010 * sr) as usize;
-    if t.samples.len() < n_fft {
-        return Vec::new();
-    }
-    let fft = RealFftPlanner::<f64>::new().plan_fft_forward(n_fft);
-    let window: Vec<f64> = (0..n_fft)
-        .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n_fft as f64).cos())
-        .collect();
-    let bin_hz = sr / n_fft as f64;
-    let hf_bin = (8000.0 / bin_hz) as usize;
-    let mut input = fft.make_input_vec();
-    let mut spectrum = fft.make_output_vec();
-    let mut hf_ratio = Vec::new();
-    let mut envelopes: Vec<Vec<f64>> = Vec::new();
-    let mut times = Vec::new();
-    let mut k = 0;
-    while k + n_fft <= t.samples.len() {
-        for i in 0..n_fft {
-            input[i] = f64::from(t.samples[k + i]) * window[i];
-        }
-        if fft.process(&mut input, &mut spectrum).is_err() {
-            return Vec::new();
-        }
-        let power: Vec<f64> = spectrum.iter().map(|c| c.norm_sqr()).collect();
-        let total: f64 = power.iter().sum::<f64>() + 1e-12;
-        hf_ratio.push(power[hf_bin..].iter().sum::<f64>() / total);
-        // Coarse envelope: log energy in 24 bands up to 8 kHz.
-        let bands = 24;
-        let env: Vec<f64> = (0..bands)
-            .map(|b| {
-                let lo = 1 + b * hf_bin / bands;
-                let hi = 1 + (b + 1) * hf_bin / bands;
-                (power[lo..hi].iter().sum::<f64>() / total + 1e-9).log10()
-            })
-            .collect();
-        envelopes.push(env);
-        times.push((k + n_fft / 2) as f64 / sr);
-        k += hop;
-    }
-    let mut out = Vec::new();
-    let mut sorted = hf_ratio.clone();
-    sorted.sort_by(f64::total_cmp);
-    let median = sorted[sorted.len() / 2];
-    for i in 1..hf_ratio.len().saturating_sub(1) {
-        let spike = hf_ratio[i] > 0.25 && hf_ratio[i] > 6.0 * median.max(1e-4);
-        let isolated = hf_ratio[i - 1] < hf_ratio[i] / 2.0 && hf_ratio[i + 1] < hf_ratio[i] / 2.0;
-        if spike && isolated {
-            out.push(Artifact {
-                kind: ArtifactKind::Crackle,
-                track: Some(t.track),
-                at_sec: times[i],
-                duration_sec: 0.01,
-                magnitude: hf_ratio[i],
-                detail: format!(
-                    "{:.0}% of energy above 8 kHz in one frame",
-                    hf_ratio[i] * 100.0
-                ),
-            });
-        }
-    }
-    let in_steady = |time: f64| {
-        t.notes.iter().any(|n| {
-            let edge = 0.08f64.min((n.end_sec - n.start_sec) / 4.0);
-            n.sung && time > n.start_sec + edge && time < n.end_sec - edge
-        })
-    };
-    for i in 1..envelopes.len() {
-        if !in_steady(times[i]) || !in_steady(times[i - 1]) {
-            continue;
-        }
-        let d: f64 = envelopes[i]
-            .iter()
-            .zip(&envelopes[i - 1])
-            .map(|(a, b)| (a - b).powi(2))
-            .sum::<f64>()
-            .sqrt();
-        if d > 3.0 {
-            out.push(Artifact {
-                kind: ArtifactKind::FormantJump,
-                track: Some(t.track),
-                at_sec: times[i],
-                duration_sec: 0.01,
-                magnitude: d,
-                detail: format!("spectral envelope changed by {d:.1} (log-band distance) in 10 ms"),
-            });
+        if let Some(r) = run {
+            flush(r, k, &mut out);
         }
     }
     out
@@ -279,8 +181,24 @@ mod tests {
         let mut s = vec![0.1f32; 2000];
         s[100] = 1.0;
         s[102] = 1.0;
-        let a = detect_mix(&s, 1000);
+        let a = clipping(&s, 2, 1000, 10);
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].kind, ArtifactKind::Clipping);
+        assert_eq!(clipped_samples(&s), 2);
+    }
+
+    #[test]
+    fn finds_join_click_only_where_present() {
+        let sr = 44_100u32;
+        let mut s: Vec<f32> = (0..sr)
+            .map(|i| 0.3 * (std::f32::consts::TAU * 220.0 * i as f32 / sr as f32).sin())
+            .collect();
+        // A phase jump at 0.5 s.
+        for (i, x) in s.iter_mut().enumerate().skip(sr as usize / 2) {
+            *x = 0.3 * (std::f32::consts::TAU * 220.0 * i as f32 / sr as f32 + 2.0).sin();
+        }
+        let a = discontinuities(&s, sr, &[0.25, 0.5], TrackId(1));
+        assert_eq!(a.len(), 1, "{a:?}");
+        assert!((a[0].at_sec - 0.5).abs() < 1e-9);
     }
 }

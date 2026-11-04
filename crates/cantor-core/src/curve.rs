@@ -24,7 +24,7 @@ impl Curve {
         Some(match self.interp {
             Interp::Step => y0,
             Interp::Linear => y0 + (y1 - y0) * u,
-            Interp::MonotoneHermite => {
+            Interp::Smooth => {
                 let m0 = self.tangent(i);
                 let m1 = self.tangent(i + 1);
                 let (u2, u3) = (u * u, u * u * u);
@@ -34,16 +34,6 @@ impl Curve {
                     + (u3 - u2) * h * m1
             }
         })
-    }
-
-    /// The value at `t` if `t` lies within the curve's first and last
-    /// points, else `None`. Edit layers use this, so an edit has no effect
-    /// outside the span it covers.
-    pub fn value_in_span(&self, t: Tick) -> Option<f64> {
-        let (first, last) = (self.points.first()?, self.points.last()?);
-        (first.0 <= t && t <= last.0)
-            .then(|| self.value_at(t))
-            .flatten()
     }
 
     /// Fritsch–Carlson tangent at point `i`, so the interpolant never
@@ -89,10 +79,6 @@ mod tests {
         assert_eq!(curve(pts.clone(), Interp::Linear).value_at(-5), Some(0.0));
         assert_eq!(curve(pts, Interp::Linear).value_at(500), Some(10.0));
         assert_eq!(Curve::default().value_at(0), None);
-        let c = curve(vec![(10, 1.0), (20, 3.0)], Interp::Linear);
-        assert_eq!(c.value_in_span(15), Some(2.0));
-        assert_eq!(c.value_in_span(9), None);
-        assert_eq!(c.value_in_span(21), None);
     }
 
     proptest! {
@@ -111,7 +97,7 @@ mod tests {
         ) {
             let mut x = 0;
             let pts: Vec<_> = ys.iter().zip(&gaps).map(|(&y, &g)| { let p = (x, y); x += g; p }).collect();
-            let c = curve(pts.clone(), Interp::MonotoneHermite);
+            let c = curve(pts.clone(), Interp::Smooth);
             let v = c.value_at(t).unwrap();
             let i = pts.partition_point(|p| p.0 <= t).saturating_sub(1).min(pts.len() - 1);
             let j = (i + 1).min(pts.len() - 1);

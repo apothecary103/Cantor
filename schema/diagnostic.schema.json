@@ -1,94 +1,48 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Diagnostic",
-  "description": "A message about an edit, import or file. Cantor never drops an edit\nsilently: anything it cannot honor is reported here.",
+  "description": "A message about an edit or a project.",
   "type": "object",
   "properties": {
     "code": {
       "description": "Stable machine-readable code, such as `\"note.not_found\"`.",
       "type": "string"
     },
-    "message": {
-      "description": "Human-readable explanation.",
-      "type": "string"
-    },
-    "severity": {
-      "description": "Severity.",
-      "$ref": "#/$defs/Severity"
-    },
-    "target": {
-      "description": "The entity concerned, if any.",
+    "entity": {
+      "description": "What it is about, if anything specific.",
       "anyOf": [
         {
-          "$ref": "#/$defs/EntityRef"
+          "$ref": "#/$defs/Entity"
         },
         {
           "type": "null"
         }
       ]
+    },
+    "level": {
+      "description": "Severity.",
+      "$ref": "#/$defs/Level"
+    },
+    "message": {
+      "description": "Human-readable explanation.",
+      "type": "string"
     }
   },
   "required": [
-    "severity",
+    "level",
     "code",
     "message"
   ],
   "$defs": {
-    "EntityRef": {
-      "description": "Points at a part of the document.",
+    "Entity": {
+      "description": "What a diagnostic is about.",
       "oneOf": [
         {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "meta"
-            }
-          },
-          "required": [
-            "kind"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "tempo_map"
-            }
-          },
-          "required": [
-            "kind"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "time_sig_map"
-            }
-          },
-          "required": [
-            "kind"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "key_map"
-            }
-          },
-          "required": [
-            "kind"
-          ]
-        },
-        {
+          "description": "A track.",
           "type": "object",
           "properties": {
             "id": {
+              "description": "The track.",
               "$ref": "#/$defs/TrackId"
             },
             "kind": {
@@ -102,114 +56,37 @@
           ]
         },
         {
+          "description": "A note.",
           "type": "object",
           "properties": {
             "id": {
-              "$ref": "#/$defs/PartId"
-            },
-            "kind": {
-              "type": "string",
-              "const": "part"
-            }
-          },
-          "required": [
-            "kind",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "id": {
+              "description": "The note.",
               "$ref": "#/$defs/NoteId"
             },
             "kind": {
               "type": "string",
               "const": "note"
-            }
-          },
-          "required": [
-            "kind",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "curve"
-            },
-            "param": {
-              "$ref": "#/$defs/ParamId"
             },
             "track": {
-              "$ref": "#/$defs/TrackId"
-            }
-          },
-          "required": [
-            "kind",
-            "track",
-            "param"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "id": {
-              "$ref": "#/$defs/PhraseId"
-            },
-            "kind": {
-              "type": "string",
-              "const": "phrase"
+              "description": "Its track, when known.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TrackId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
             "kind",
             "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "section"
-            },
-            "name": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "name"
           ]
         }
       ]
     },
-    "NoteId": {
-      "description": "Identifies a note.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0
-    },
-    "ParamId": {
-      "description": "Names a curve parameter, such as `\"breathiness\"`. Known parameters are\nlisted by [`registry`]; ops naming anything else return a diagnostic.",
-      "type": "string"
-    },
-    "PartId": {
-      "description": "Identifies a part (a region of notes on a track).",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0
-    },
-    "PhraseId": {
-      "description": "Identifies a phrase, the unit of rendering, seeding and retakes.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0
-    },
-    "Severity": {
+    "Level": {
       "description": "How serious a diagnostic is.",
       "oneOf": [
         {
@@ -218,19 +95,25 @@
           "const": "info"
         },
         {
-          "description": "The edit was applied, but something deserves attention.",
+          "description": "Applied, but something deserves attention.",
           "type": "string",
           "const": "warning"
         },
         {
-          "description": "The edit was rejected; nothing changed.",
+          "description": "Rejected; nothing changed.",
           "type": "string",
           "const": "error"
         }
       ]
     },
+    "NoteId": {
+      "description": "Identifies a note, unique within the project. `0` (or omitted) in\n`add_notes` means \"assign one\".",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
     "TrackId": {
-      "description": "Identifies a track.",
+      "description": "Identifies a track. `0` (or omitted) in `add_track` means \"assign one\".",
       "type": "integer",
       "format": "uint64",
       "minimum": 0

@@ -1,6 +1,6 @@
 [package]
 name = "cantor-analysis"
-description = "Cantor render analysis: pitch accuracy, timing, loudness and artifact detection"
+description = "Cantor DSP analysis: YIN F0, reference transcription, render reports (pitch, timing, loudness, artifacts)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,6 +13,9 @@ ebur128.workspace = true
 realfft.workspace = true
 serde.workspace = true
 schemars.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

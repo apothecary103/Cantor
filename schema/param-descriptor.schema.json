@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ParamDescriptor",
-  "description": "Describes one curve parameter. `min`/`max`/`default` apply to the final\nvalue `base + model_prediction + user_delta`.",
+  "description": "Describes one parameter: a track curve or a numeric note field.",
   "type": "object",
   "properties": {
     "default": {
-      "description": "Value when nothing is predicted or edited.",
+      "description": "Value when nothing is set.",
       "type": "number",
       "format": "double"
     },
@@ -14,16 +14,16 @@
       "type": "string"
     },
     "id": {
-      "description": "Stable identifier used in ops and project files.",
+      "description": "Stable identifier: the curve id, or the note field path such as\n`\"portamento.length_ms\"` (fields of `Note`, `Timing` and `NotePitch`).",
       "type": "string"
     },
     "max": {
-      "description": "Largest final value.",
+      "description": "Largest allowed value.",
       "type": "number",
       "format": "double"
     },
     "min": {
-      "description": "Smallest final value.",
+      "description": "Smallest allowed value.",
       "type": "number",
       "format": "double"
     },
@@ -32,7 +32,7 @@
       "type": "string"
     },
     "unit": {
-      "description": "Unit of curve values.",
+      "description": "Unit of the value.",
       "type": "string"
     }
   },

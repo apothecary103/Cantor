@@ -1,342 +1,215 @@
-//! Ops: the only way to change a project.
-//!
-//! Every op is serializable, validated before it touches the document, and
-//! applied atomically. Applying an op yields its inverse, which the undo
-//! tree stores; inverses restore the previous state exactly.
+//! [`Op`]: every edit to a project. Clients never mutate a [`Project`]
+//! directly; they send ops, and each applied op returns its inverse.
 
-use crate::ids::{NoteId, PartId, PhraseId, TakeId, Tick, TrackId};
-use crate::model::{
-    BackendRef, Doubling, EffectSlot, Envelope, Interp, LayeredCurve, Meta, Mix, Note, Part,
-    PhonemeOverride, Portamento, RetakeDim, Scale, SingerRef, TakeLane, TickRange, Track, Vibrato,
-    VocalModes, VoiceMixEntry,
-};
+use crate::ids::{NoteId, Tick, TrackId};
+use crate::model::*;
 use crate::params::ParamId;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// An edit to a project.
+/// An edit. JSON: `{"op": "<name>", ...fields}`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "op", rename_all = "snake_case")]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+// Ops are few and short-lived; boxing the patches would only cost ergonomics.
+#[allow(clippy::large_enum_variant)]
 pub enum Op {
-    /// Applies several ops atomically, as one undo step.
+    /// Several ops applied atomically as one undo step: if any fails,
+    /// none is applied.
     Batch {
-        /// Name shown in the history.
+        /// Name in the undo history.
+        #[serde(default)]
         label: String,
-        /// Ops in order.
+        /// The ops, applied in order.
         ops: Vec<Op>,
     },
-
-    /// Changes title and credits.
+    /// Replaces title, artist and comment.
     SetMeta {
         /// The new metadata.
         meta: Meta,
     },
-    /// Adds or replaces the tempo at a tick.
+    /// Sets the tempo from `tick` on, adding or replacing a tempo point.
     SetTempo {
-        /// Where the tempo takes effect, ≥ 0.
+        /// Tick of the tempo point, >= 0.
         tick: Tick,
-        /// Quarter notes per minute.
+        /// Quarter notes per minute, 10..=1000.
         bpm: f64,
     },
-    /// Removes the tempo change at a tick. The tempo at tick 0 cannot be
-    /// removed.
+    /// Removes the tempo point at `tick` (not the one at 0).
     RemoveTempo {
-        /// Tick of the tempo change.
+        /// Tick of an existing tempo point.
         tick: Tick,
     },
-    /// Adds or replaces the time signature at a bar.
+    /// Sets the time signature from `bar` on.
     SetTimeSig {
         /// 0-based bar.
         bar: u32,
-        /// Beats per bar.
-        numerator: u8,
-        /// Beat unit, a power of two.
-        denominator: u8,
+        /// Beats per bar, 1..=32.
+        num: u8,
+        /// Beat unit: 1, 2, 4, 8, 16 or 32.
+        den: u8,
     },
-    /// Removes the time signature at a bar (not bar 0).
+    /// Removes the time-signature change at `bar` (not bar 0).
     RemoveTimeSig {
-        /// 0-based bar.
+        /// Bar of an existing change.
         bar: u32,
     },
-    /// Adds or replaces the key at a tick.
+    /// Sets or clears (`null`) the song's key.
     SetKey {
-        /// Where the key takes effect, ≥ 0.
-        tick: Tick,
-        /// Tonic pitch class, 0 = C … 11 = B.
-        tonic: u8,
-        /// Scale or mode.
-        scale: Scale,
+        /// The key.
+        #[serde(default)]
+        key: Option<Key>,
     },
-    /// Removes the key change at a tick.
-    RemoveKey {
-        /// Tick of the key change.
-        tick: Tick,
+    /// Replaces all sections.
+    SetSections {
+        /// The sections; each needs `start < end`.
+        sections: Vec<Section>,
     },
-    /// Sets or clears a phrase's diffusion noise seed.
-    SetSeed {
-        /// The phrase.
-        phrase: PhraseId,
-        /// The seed; `None` removes it.
-        seed: Option<u64>,
+    /// Sets or clears (`null`) the reference recording.
+    SetReference {
+        /// The reference.
+        #[serde(default)]
+        reference: Option<Reference>,
     },
-    /// Adds or replaces a named section.
-    SetSection {
-        /// Unique name, such as "chorus".
-        name: String,
-        /// First tick.
-        start: Tick,
-        /// First tick after the section.
-        end: Tick,
-    },
-    /// Removes a section.
-    RemoveSection {
-        /// The section's name.
-        name: String,
-    },
-    /// Generates new takes for every phrase of a track that overlaps a
-    /// range, and selects the first new take of each. Takes re-roll the
-    /// chosen dimensions with new seeds; earlier takes are kept.
-    Retake {
-        /// The track.
-        track: TrackId,
-        /// Phrases overlapping this range are retaken.
-        range: TickRange,
-        /// Dimensions to vary.
-        dims: Vec<RetakeDim>,
-        /// Takes per phrase, 1..=16.
-        n_variants: u8,
-        /// Base seed; `None` derives one from the phrase and lane.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        seed: Option<u64>,
-    },
-    /// Replaces a phrase's whole take lane, or removes it with `None`.
-    /// Undo uses this to restore takes exactly.
-    RestoreTakeLane {
-        /// The phrase.
-        phrase: PhraseId,
-        /// The lane; `None` removes it.
-        lane: Option<TakeLane>,
-    },
-    /// Chooses which take of a phrase plays.
-    SelectTake {
-        /// The phrase.
-        phrase: PhraseId,
-        /// The take; `None` selects the original.
-        take: Option<TakeId>,
-    },
-
-    /// Inserts a track (with any parts, notes and curves it carries).
+    /// Adds a track. Its id and its notes' ids are assigned when 0/omitted.
     AddTrack {
-        /// Position in the track list; `None` appends.
+        /// The track, possibly with notes, curves and effects.
+        track: Track,
+        /// Position in the track list; omitted = last.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         index: Option<usize>,
-        /// The track. All ids inside must be unused.
-        track: Track,
     },
     /// Removes a track and everything on it.
     RemoveTrack {
         /// The track.
-        id: TrackId,
+        track: TrackId,
     },
-    /// Moves a track to a new position in the track list.
-    MoveTrack {
-        /// The track.
-        id: TrackId,
-        /// New position.
-        index: usize,
-    },
-    /// Changes track settings. Fields left out are unchanged.
-    SetTrack {
-        /// The track.
-        id: TrackId,
-        /// The changes.
-        patch: TrackPatch,
-    },
-
-    /// Adds a part (with any notes it carries) to a track.
-    AddPart {
+    /// Changes a track's settings (not its notes, curves or effects).
+    UpdateTrack {
         /// The track.
         track: TrackId,
-        /// The part. All ids inside must be unused.
-        part: Part,
+        /// Fields to change; omitted fields stay.
+        patch: TrackPatch,
     },
-    /// Removes a part and its notes.
-    RemovePart {
-        /// The part.
-        id: PartId,
-    },
-    /// Moves a part in time. Its notes move with it.
-    MovePart {
-        /// The part.
-        id: PartId,
-        /// Tick offset.
-        dt: i64,
-        /// Also move the track's curve points under the part.
-        carry_curves: bool,
-    },
-    /// Renames or resizes a part.
-    SetPart {
-        /// The part.
-        id: PartId,
-        /// New name.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        /// New length in ticks.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        length: Option<Tick>,
-    },
-
-    /// Adds a note to a part.
-    AddNote {
-        /// The part.
-        part: PartId,
-        /// The note; its id must be unused.
-        note: Note,
+    /// Adds notes. Ids that are 0/omitted are assigned.
+    AddNotes {
+        /// The track.
+        track: TrackId,
+        /// The notes, in absolute ticks.
+        notes: Vec<Note>,
     },
     /// Removes notes.
     RemoveNotes {
+        /// The track.
+        track: TrackId,
         /// The notes.
         ids: Vec<NoteId>,
     },
-    /// Moves notes in time and pitch.
+    /// Sets the same fields on several notes.
+    UpdateNotes {
+        /// The track.
+        track: TrackId,
+        /// The notes.
+        ids: Vec<NoteId>,
+        /// Fields to change; omitted fields stay.
+        patch: NotePatch,
+    },
+    /// Moves notes in time and/or pitch.
     MoveNotes {
+        /// The track.
+        track: TrackId,
         /// The notes.
         ids: Vec<NoteId>,
-        /// Tick offset.
-        dt: i64,
-        /// Pitch offset in cents.
-        dcents: f64,
-        /// Also move the track's curve points under the notes (default).
-        carry_curves: bool,
+        /// Ticks to move by; results must be >= 0.
+        #[serde(default)]
+        dticks: Tick,
+        /// Semitones to transpose by; results must be in 0..=127.
+        #[serde(default)]
+        dkeys: i32,
     },
-    /// Changes a note's length.
-    ResizeNote {
+    /// Lengthens (dlength > 0) or shortens notes.
+    ResizeNotes {
+        /// The track.
+        track: TrackId,
+        /// The notes.
+        ids: Vec<NoteId>,
+        /// Ticks to add to each length; results must be > 0.
+        dlength: Tick,
+        /// Move the start edge (start -= dlength, end fixed) instead of the
+        /// end edge.
+        #[serde(default)]
+        from_start: bool,
+    },
+    /// Splits a note at `at`. The left part keeps the id, lyric, scoop and
+    /// portamento; the right part gets a new id, lyric "+", the vibrato
+    /// and the fall.
+    SplitNote {
+        /// The track.
+        track: TrackId,
         /// The note.
         id: NoteId,
-        /// New length in ticks, ≥ 1.
-        length: Tick,
+        /// Absolute tick strictly inside the note.
+        at: Tick,
     },
-    /// Changes a note's lyric.
-    SetLyric {
-        /// The note.
-        id: NoteId,
-        /// New lyric.
-        lyric: String,
+    /// Merges notes into the earliest one, which then spans until the
+    /// latest end; the others are removed.
+    MergeNotes {
+        /// The track.
+        track: TrackId,
+        /// At least two notes.
+        ids: Vec<NoteId>,
     },
-    /// Sets or clears a note's phoneme overrides.
-    SetPhonemes {
-        /// The note.
-        id: NoteId,
-        /// Overrides; `None` returns control to the phonemizer.
-        phonemes: Option<Vec<PhonemeOverride>>,
+    /// Sets lyrics: the i-th lyric goes to the i-th id.
+    SetLyrics {
+        /// The track.
+        track: TrackId,
+        /// The notes.
+        ids: Vec<NoteId>,
+        /// One lyric per id: a list, or one string split at whitespace.
+        lyrics: Lyrics,
     },
-    /// Changes a note's expression. Fields left out are unchanged.
-    SetNoteExpr {
-        /// The note.
-        id: NoteId,
-        /// The changes.
-        expr: NoteExprPatch,
-    },
-    /// Replaces a note's vocal mode weights.
-    SetVocalModes {
-        /// The note.
-        id: NoteId,
-        /// New weights.
-        modes: VocalModes,
-    },
-    /// Replaces existing notes wholesale, matched by id. Each note stays in
-    /// its part. Undo uses this to restore notes exactly.
-    ReplaceNotes {
-        /// The new note contents.
-        notes: Vec<Note>,
-    },
-
-    /// Replaces the user layer of a curve within a range: points in
-    /// `[range.start, range.end)` are removed, then `points` are inserted.
+    /// Replaces a curve's points within `range` (inclusive) by `points`.
     SetCurve {
         /// The track.
         track: TrackId,
-        /// The parameter.
+        /// pitd, dyn, gen, bre, bri or tone.
         param: ParamId,
-        /// Range to replace.
-        range: TickRange,
-        /// New points, strictly increasing ticks, all inside `range`.
+        /// `[first, last]` tick, inclusive. All points must lie inside.
+        range: (Tick, Tick),
+        /// `[tick, value]` pairs; values within the parameter's range.
         points: Vec<(Tick, f64)>,
-        /// Interpolation for the whole user layer.
-        interp: Interp,
+        /// Also sets the curve's interpolation.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        interp: Option<Interp>,
     },
-    /// Replaces a whole layered curve, or removes it with `None`. Undo uses
-    /// this to restore curves exactly.
-    RestoreCurve {
+    /// Removes a curve's points within `range` (inclusive), or all points.
+    ClearCurve {
         /// The track.
         track: TrackId,
-        /// The parameter.
+        /// pitd, dyn, gen, bre, bri or tone.
         param: ParamId,
-        /// The curve; `None` removes it.
-        curve: Option<LayeredCurve>,
+        /// `[first, last]` tick, inclusive; omitted = everything.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        range: Option<(Tick, Tick)>,
     },
-}
-
-/// Changes to a track's settings. `None` fields are unchanged.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields, default)]
-#[allow(missing_docs)]
-pub struct TrackPatch {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub singer: Option<SingerRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub backend: Option<BackendRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mix: Option<Mix>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub effects: Option<Vec<EffectSlot>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub doubling: Option<Doubling>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub voice_mix: Option<Vec<VoiceMixEntry>>,
-}
-
-/// Changes to a note's expression. A missing field is unchanged; for
-/// optional settings, `null` removes the setting.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields, default)]
-#[allow(missing_docs)]
-pub struct NoteExprPatch {
-    #[serde(
-        deserialize_with = "double_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub vibrato: Option<Option<Vibrato>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub portamento: Option<Portamento>,
-    #[serde(
-        deserialize_with = "double_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub attack: Option<Option<Envelope>>,
-    #[serde(
-        deserialize_with = "double_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub release: Option<Option<Envelope>>,
-}
-
-/// Distinguishes a missing field (`None`) from an explicit `null`
-/// (`Some(None)`).
-fn double_option<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: Deserializer<'de>,
-{
-    Option::<T>::deserialize(d).map(Some)
+    /// Replaces a track's effect chain.
+    SetEffects {
+        /// The track.
+        track: TrackId,
+        /// The chain, in order.
+        effects: Vec<EffectSlot>,
+    },
 }
 
 impl Op {
-    /// A short human-readable name, used as the history label.
+    /// A short name for the undo history.
     pub fn label(&self) -> String {
         let s = match self {
+            Op::Batch { label, ops } if label.is_empty() => {
+                return match ops.as_slice() {
+                    [one] => one.label(),
+                    _ => format!("{} edits", ops.len()),
+                };
+            }
             Op::Batch { label, .. } => return label.clone(),
             Op::SetMeta { .. } => "Edit project info",
             Op::SetTempo { .. } => "Set tempo",
@@ -344,33 +217,385 @@ impl Op {
             Op::SetTimeSig { .. } => "Set time signature",
             Op::RemoveTimeSig { .. } => "Remove time signature",
             Op::SetKey { .. } => "Set key",
-            Op::RemoveKey { .. } => "Remove key",
-            Op::SetSeed { .. } => "Set seed",
-            Op::SetSection { .. } => "Set section",
-            Op::RemoveSection { .. } => "Remove section",
-            Op::Retake { .. } => "Retake",
-            Op::RestoreTakeLane { .. } => "Restore takes",
-            Op::SelectTake { .. } => "Select take",
+            Op::SetSections { .. } => "Edit sections",
+            Op::SetReference { .. } => "Set reference",
             Op::AddTrack { .. } => "Add track",
             Op::RemoveTrack { .. } => "Remove track",
-            Op::MoveTrack { .. } => "Move track",
-            Op::SetTrack { .. } => "Edit track",
-            Op::AddPart { .. } => "Add part",
-            Op::RemovePart { .. } => "Remove part",
-            Op::MovePart { .. } => "Move part",
-            Op::SetPart { .. } => "Edit part",
-            Op::AddNote { .. } => "Add note",
+            Op::UpdateTrack { .. } => "Edit track",
+            Op::AddNotes { .. } => "Add notes",
             Op::RemoveNotes { .. } => "Remove notes",
+            Op::UpdateNotes { .. } => "Edit notes",
             Op::MoveNotes { .. } => "Move notes",
-            Op::ResizeNote { .. } => "Resize note",
-            Op::SetLyric { .. } => "Set lyric",
-            Op::SetPhonemes { .. } => "Set phonemes",
-            Op::SetNoteExpr { .. } => "Edit expression",
-            Op::SetVocalModes { .. } => "Set vocal modes",
-            Op::ReplaceNotes { .. } => "Replace notes",
-            Op::SetCurve { .. } => "Edit curve",
-            Op::RestoreCurve { .. } => "Restore curve",
+            Op::ResizeNotes { .. } => "Resize notes",
+            Op::SplitNote { .. } => "Split note",
+            Op::MergeNotes { .. } => "Merge notes",
+            Op::SetLyrics { .. } => "Set lyrics",
+            Op::SetCurve { .. } => "Draw curve",
+            Op::ClearCurve { .. } => "Clear curve",
+            Op::SetEffects { .. } => "Edit effects",
         };
-        s.to_owned()
+        s.into()
+    }
+
+    /// A batch with a label.
+    pub fn batch(label: impl Into<String>, ops: Vec<Op>) -> Self {
+        Op::Batch {
+            label: label.into(),
+            ops,
+        }
+    }
+
+    /// The ops that turn `from` into `to` (track contents are replaced
+    /// wholesale when they differ). Used to restore checkpoints and to make
+    /// imports undoable.
+    pub fn transition(from: &Project, to: &Project) -> Vec<Op> {
+        let mut ops = Vec::new();
+        if from.meta != to.meta {
+            ops.push(Op::SetMeta {
+                meta: to.meta.clone(),
+            });
+        }
+        for p in &from.tempo {
+            if p.tick != 0 && !to.tempo.iter().any(|q| q.tick == p.tick) {
+                ops.push(Op::RemoveTempo { tick: p.tick });
+            }
+        }
+        for p in &to.tempo {
+            if !from.tempo.contains(p) {
+                ops.push(Op::SetTempo {
+                    tick: p.tick,
+                    bpm: p.bpm,
+                });
+            }
+        }
+        for s in &from.time_sig {
+            if s.bar != 0 && !to.time_sig.iter().any(|t| t.bar == s.bar) {
+                ops.push(Op::RemoveTimeSig { bar: s.bar });
+            }
+        }
+        for s in &to.time_sig {
+            if !from.time_sig.contains(s) {
+                ops.push(Op::SetTimeSig {
+                    bar: s.bar,
+                    num: s.num,
+                    den: s.den,
+                });
+            }
+        }
+        if from.key != to.key {
+            ops.push(Op::SetKey { key: to.key });
+        }
+        if from.sections != to.sections {
+            ops.push(Op::SetSections {
+                sections: to.sections.clone(),
+            });
+        }
+        if from.reference != to.reference {
+            ops.push(Op::SetReference {
+                reference: to.reference.clone(),
+            });
+        }
+        if from.tracks != to.tracks {
+            ops.extend(from.tracks.iter().map(|t| Op::RemoveTrack { track: t.id }));
+            ops.extend(to.tracks.iter().map(|t| Op::AddTrack {
+                track: t.clone(),
+                index: None,
+            }));
+        }
+        ops
+    }
+}
+
+/// Lyrics for [`Op::SetLyrics`]: a list, or one string split at whitespace.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Lyrics {
+    /// One lyric per note.
+    List(Vec<String>),
+    /// Lyrics separated by whitespace, such as "ka ra o ke".
+    Text(String),
+}
+
+impl Lyrics {
+    /// The lyrics as a list.
+    pub fn to_vec(&self) -> Vec<String> {
+        match self {
+            Lyrics::List(v) => v.clone(),
+            Lyrics::Text(s) => s.split_whitespace().map(String::from).collect(),
+        }
+    }
+}
+
+/// Deserializes a present field (even `null`) as `Some`, so a patch can
+/// tell "clear" (`null`) from "leave alone" (omitted).
+fn present<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(d).map(Some)
+}
+
+/// Assigns each `Some` field of a patch to the target.
+macro_rules! patch {
+    ($target:expr, $patch:expr; $($field:ident),* $(,)?) => {
+        $(if let Some(v) = &$patch.$field { $target.$field = v.clone(); })*
+    };
+}
+
+/// Changes to a track's settings; omitted fields stay as they are.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct TrackPatch {
+    /// Display name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Voicebank id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub singer: Option<String>,
+    /// How lyrics become aliases.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phonemizer: Option<Phonemizer>,
+    /// Default resampler flags.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flags: Option<String>,
+    /// Gain, pan, mute and solo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mix: Option<MixPatch>,
+}
+
+/// Changes to [`Mix`]; omitted fields stay.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct MixPatch {
+    /// Gain in dB, -60..=12.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gain_db: Option<f64>,
+    /// Pan, -1..=1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pan: Option<f64>,
+    /// Mute.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mute: Option<bool>,
+    /// Solo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub solo: Option<bool>,
+}
+
+impl TrackPatch {
+    /// A patch that sets every field to the track's current value.
+    pub fn from_track(t: &Track) -> Self {
+        Self {
+            name: Some(t.name.clone()),
+            singer: Some(t.singer.clone()),
+            phonemizer: Some(t.phonemizer),
+            flags: Some(t.flags.clone()),
+            mix: Some(MixPatch {
+                gain_db: Some(t.mix.gain_db),
+                pan: Some(t.mix.pan),
+                mute: Some(t.mix.mute),
+                solo: Some(t.mix.solo),
+            }),
+        }
+    }
+
+    /// Applies the patch.
+    pub fn apply_to(&self, t: &mut Track) {
+        patch!(t, self; name, singer, phonemizer, flags);
+        if let Some(m) = &self.mix {
+            patch!(t.mix, m; gain_db, pan, mute, solo);
+        }
+    }
+}
+
+/// Changes to notes; omitted fields stay as they are. Nested objects merge
+/// (e.g. `{"pitch": {"vibrato": {"depth_cents": 30}}}` changes only the
+/// depth, starting from the default vibrato if the note had none);
+/// `null` clears optional fields (alias, scoop, fall, vibrato,
+/// timing.preutter_ms, timing.overlap_ms).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct NotePatch {
+    /// Start in absolute ticks, >= 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<Tick>,
+    /// Length in ticks, > 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub length: Option<Tick>,
+    /// MIDI note number, 0..=127.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<u8>,
+    /// Lyric.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lyric: Option<String>,
+    /// Forced oto alias; `null` = let the phonemizer decide.
+    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub alias: Option<Option<String>>,
+    /// Consonant velocity %, 0..=200.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vel: Option<f64>,
+    /// Intensity %, 0..=200.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vol: Option<f64>,
+    /// Modulation %, 0..=100.
+    #[serde(rename = "mod", skip_serializing_if = "Option::is_none")]
+    pub mod_: Option<f64>,
+    /// Per-note resampler flags.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flags: Option<String>,
+    /// Timing overrides.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timing: Option<TimingPatch>,
+    /// Pitch expression.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pitch: Option<PitchPatch>,
+}
+
+/// Changes to [`Timing`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct TimingPatch {
+    /// Pre-utterance ms; `null` = use oto.ini.
+    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub preutter_ms: Option<Option<f64>>,
+    /// Overlap ms; `null` = use oto.ini.
+    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub overlap_ms: Option<Option<f64>>,
+    /// Start offset ms.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_ms: Option<f64>,
+}
+
+/// Changes to [`NotePitch`].
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+pub struct PitchPatch {
+    /// Portamento fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub portamento: Option<PortamentoPatch>,
+    /// Scoop; `null` removes it.
+    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub scoop: Option<Option<Bend>>,
+    /// Fall; `null` removes it.
+    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub fall: Option<Option<Bend>>,
+    /// Vibrato fields; `null` removes the vibrato.
+    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub vibrato: Option<Option<VibratoPatch>>,
+    /// Replaces the extra bend points.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub points: Option<Vec<PitchPoint>>,
+}
+
+/// Changes to [`Portamento`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+#[allow(missing_docs)]
+pub struct PortamentoPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub length_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overshoot_cents: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preparation_cents: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape: Option<Shape>,
+}
+
+/// Changes to [`Vibrato`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+#[allow(missing_docs)]
+pub struct VibratoPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub length: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth_cents: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_in: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_out: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shift: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drift: Option<f64>,
+}
+
+impl VibratoPatch {
+    /// A patch that sets every field.
+    pub fn from_vibrato(v: &Vibrato) -> Self {
+        Self {
+            length: Some(v.length),
+            period_ms: Some(v.period_ms),
+            depth_cents: Some(v.depth_cents),
+            fade_in: Some(v.fade_in),
+            fade_out: Some(v.fade_out),
+            phase: Some(v.phase),
+            shift: Some(v.shift),
+            drift: Some(v.drift),
+        }
+    }
+}
+
+impl NotePatch {
+    /// A patch that sets every field to the note's current value; applying
+    /// it to any note makes that note equal to `n` (except for its id).
+    pub fn from_note(n: &Note) -> Self {
+        let p = &n.pitch;
+        Self {
+            start: Some(n.start),
+            length: Some(n.length),
+            key: Some(n.key),
+            lyric: Some(n.lyric.clone()),
+            alias: Some(n.alias.clone()),
+            vel: Some(n.vel),
+            vol: Some(n.vol),
+            mod_: Some(n.mod_),
+            flags: Some(n.flags.clone()),
+            timing: Some(TimingPatch {
+                preutter_ms: Some(n.timing.preutter_ms),
+                overlap_ms: Some(n.timing.overlap_ms),
+                offset_ms: Some(n.timing.offset_ms),
+            }),
+            pitch: Some(PitchPatch {
+                portamento: Some(PortamentoPatch {
+                    length_ms: Some(p.portamento.length_ms),
+                    start_ms: Some(p.portamento.start_ms),
+                    overshoot_cents: Some(p.portamento.overshoot_cents),
+                    preparation_cents: Some(p.portamento.preparation_cents),
+                    shape: Some(p.portamento.shape),
+                }),
+                scoop: Some(p.scoop),
+                fall: Some(p.fall),
+                vibrato: Some(p.vibrato.as_ref().map(VibratoPatch::from_vibrato)),
+                points: Some(p.points.clone()),
+            }),
+        }
+    }
+
+    /// Applies the patch to a note (without validating the result).
+    pub fn apply_to(&self, n: &mut Note) {
+        patch!(n, self; start, length, key, lyric, alias, vel, vol, mod_, flags);
+        if let Some(t) = &self.timing {
+            patch!(n.timing, t; preutter_ms, overlap_ms, offset_ms);
+        }
+        let Some(pp) = &self.pitch else { return };
+        let pitch = &mut n.pitch;
+        if let Some(port) = &pp.portamento {
+            patch!(pitch.portamento, port; length_ms, start_ms, overshoot_cents, preparation_cents, shape);
+        }
+        patch!(pitch, pp; scoop, fall, points);
+        match &pp.vibrato {
+            None => {}
+            Some(None) => pitch.vibrato = None,
+            Some(Some(vp)) => {
+                let v = pitch.vibrato.get_or_insert_with(Vibrato::default);
+                patch!(v, vp; length, period_ms, depth_cents, fade_in, fade_out, phase, shift, drift);
+            }
+        }
     }
 }

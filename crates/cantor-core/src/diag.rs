@@ -1,156 +1,145 @@
-//! Diagnostics and document diffs.
+//! Diagnostics: Cantor never drops an edit silently; anything it cannot
+//! honor, or anything wrong with a project, is reported here.
+//! JSON: `{ level, code, message, entity? }`.
 
-use crate::ids::{NoteId, PartId, PhraseId, TrackId};
-use crate::params::ParamId;
+use crate::ids::{NoteId, TrackId};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::fmt;
 
 /// How serious a diagnostic is.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum Severity {
+pub enum Level {
     /// Background information.
     Info,
-    /// The edit was applied, but something deserves attention.
+    /// Applied, but something deserves attention.
     Warning,
-    /// The edit was rejected; nothing changed.
+    /// Rejected; nothing changed.
     Error,
 }
 
-/// A message about an edit, import or file. Cantor never drops an edit
-/// silently: anything it cannot honor is reported here.
+/// What a diagnostic is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Entity {
+    /// A track.
+    Track {
+        /// The track.
+        id: TrackId,
+    },
+    /// A note.
+    Note {
+        /// Its track, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        track: Option<TrackId>,
+        /// The note.
+        id: NoteId,
+    },
+}
+
+/// A message about an edit or a project.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Diagnostic {
     /// Severity.
-    pub severity: Severity,
+    pub level: Level,
     /// Stable machine-readable code, such as `"note.not_found"`.
     pub code: String,
     /// Human-readable explanation.
     pub message: String,
-    /// The entity concerned, if any.
+    /// What it is about, if anything specific.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<EntityRef>,
+    pub entity: Option<Entity>,
 }
 
 impl Diagnostic {
-    /// Creates a diagnostic.
-    pub fn new(
-        severity: Severity,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        target: Option<EntityRef>,
-    ) -> Self {
+    /// Creates a diagnostic about nothing specific.
+    pub fn new(level: Level, code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
-            severity,
+            level,
             code: code.into(),
             message: message.into(),
-            target,
+            entity: None,
         }
     }
 
-    /// An error diagnostic.
-    pub fn error(
-        code: impl Into<String>,
-        message: impl Into<String>,
-        target: Option<EntityRef>,
-    ) -> Self {
-        Self::new(Severity::Error, code, message, target)
+    /// An error.
+    pub fn error(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(Level::Error, code, message)
     }
 
-    /// A warning diagnostic.
-    pub fn warning(
-        code: impl Into<String>,
-        message: impl Into<String>,
-        target: Option<EntityRef>,
-    ) -> Self {
-        Self::new(Severity::Warning, code, message, target)
+    /// A warning.
+    pub fn warning(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(Level::Warning, code, message)
     }
 
-    /// An info diagnostic.
-    pub fn info(
-        code: impl Into<String>,
-        message: impl Into<String>,
-        target: Option<EntityRef>,
-    ) -> Self {
-        Self::new(Severity::Info, code, message, target)
+    /// Targets a track (or sets the track of a targeted note).
+    pub fn on_track(mut self, track: TrackId) -> Self {
+        self.entity = Some(match self.entity {
+            Some(Entity::Note { id, .. }) => Entity::Note {
+                track: Some(track),
+                id,
+            },
+            _ => Entity::Track { id: track },
+        });
+        self
+    }
+
+    /// Targets a note (keeping a previously targeted track).
+    pub fn on_note(mut self, note: NoteId) -> Self {
+        let track = match self.entity {
+            Some(
+                Entity::Track { id }
+                | Entity::Note {
+                    track: Some(id), ..
+                },
+            ) => Some(id),
+            _ => None,
+        };
+        self.entity = Some(Entity::Note { track, id: note });
+        self
     }
 
     /// Whether this is an error.
     pub fn is_error(&self) -> bool {
-        self.severity == Severity::Error
+        self.level == Level::Error
     }
 }
 
-/// Points at a part of the document.
-#[derive(
-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
-)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum EntityRef {
-    Meta,
-    TempoMap,
-    TimeSigMap,
-    KeyMap,
-    Track { id: TrackId },
-    Part { id: PartId },
-    Note { id: NoteId },
-    Curve { track: TrackId, param: ParamId },
-    Phrase { id: PhraseId },
-    Section { name: String },
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
 }
 
-/// What an applied edit changed.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct DocDiff {
-    /// Entities that now exist and did not before.
-    pub added: BTreeSet<EntityRef>,
-    /// Entities that existed and no longer do.
-    pub removed: BTreeSet<EntityRef>,
-    /// Entities that exist before and after, with changed content.
-    pub modified: BTreeSet<EntityRef>,
+/// An op that was rejected; the project is unchanged.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Rejected {
+    /// Why; at least one error.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
-impl DocDiff {
-    /// Whether nothing changed.
-    pub fn is_empty(&self) -> bool {
-        self.added.is_empty() && self.removed.is_empty() && self.modified.is_empty()
-    }
-
-    pub(crate) fn add(&mut self, e: EntityRef) {
-        if !self.removed.remove(&e) {
-            self.added.insert(e);
-        } else {
-            self.modified.insert(e);
-        }
-    }
-
-    pub(crate) fn remove(&mut self, e: EntityRef) {
-        self.modified.remove(&e);
-        if !self.added.remove(&e) {
-            self.removed.insert(e);
-        }
-    }
-
-    pub(crate) fn modify(&mut self, e: EntityRef) {
-        if !self.added.contains(&e) {
-            self.modified.insert(e);
-        }
-    }
-
-    /// Folds a later diff into this one.
-    pub fn merge(&mut self, later: DocDiff) {
-        for e in later.removed {
-            self.remove(e);
-        }
-        for e in later.added {
-            self.add(e);
-        }
-        for e in later.modified {
-            self.modify(e);
+impl From<Diagnostic> for Rejected {
+    fn from(d: Diagnostic) -> Self {
+        Self {
+            diagnostics: vec![d],
         }
     }
 }
+
+impl From<Vec<Diagnostic>> for Rejected {
+    fn from(diagnostics: Vec<Diagnostic>) -> Self {
+        Self { diagnostics }
+    }
+}
+
+impl fmt::Display for Rejected {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msgs: Vec<String> = self.diagnostics.iter().map(ToString::to_string).collect();
+        f.write_str(&msgs.join("; "))
+    }
+}
+
+impl std::error::Error for Rejected {}
